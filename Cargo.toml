@@ -1,0 +1,51 @@
+[workspace]
+members = [
+    "crates/stp-core",
+    "crates/stp-tmux",
+    "crates/stp-cli",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.91"
+version = "0.1.0"
+
+[workspace.dependencies]
+anyhow = "1"
+assert_cmd = "2"
+clap = { version = "4", features = ["derive", "env"] }
+hex = "0.4"
+predicates = "3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+stp-core = { path = "crates/stp-core" }
+stp-tmux = { path = "crates/stp-tmux" }
+tempfile = "3"
+thiserror = "2"
+uuid = { version = "1", features = ["serde", "v4"] }
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+non_ascii_idents = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "allow", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
