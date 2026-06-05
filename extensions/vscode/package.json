@@ -1,0 +1,55 @@
+{
+  "name": "sexy-terminal-panel-vscode",
+  "displayName": "Sexy Terminal Panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/extension.js",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "vscode": "^1.105.0"
+  },
+  "activationEvents": [
+    "onTerminalProfile:stp.tmuxTerminal"
+  ],
+  "contributes": {
+    "terminal": {
+      "profiles": [
+        {
+          "id": "stp.tmuxTerminal",
+          "title": "STP: tmux"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "terminal.integrated.defaultProfile.osx": "STP: tmux"
+    },
+    "configuration": {
+      "title": "Sexy Terminal Panel",
+      "properties": {
+        "stp.binaryPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "stp",
+          "description": "Path to the stp binary."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "bun build ./src/extension.ts --target=node --external vscode --format=esm --outdir dist",
+    "package-vsix": "vsce package",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "bun run compile"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "3.9.2",
+    "@types/bun": "^1.3.4",
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.105.0",
+    "typescript": "^5.9.3"
+  }
+}
