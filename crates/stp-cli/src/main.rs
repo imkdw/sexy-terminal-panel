@@ -5,6 +5,7 @@ mod cli;
 mod commands;
 mod output;
 mod panel;
+mod session_cleanup;
 mod state;
 
 use cli::{Cli, Command, RegistrySubcommand};
@@ -28,10 +29,14 @@ fn main() -> Result<()> {
             }
         }
         Command::OpenCode(args) => commands::open_code(args),
+        Command::Terminate(args) => commands::terminate(args),
         Command::QaSendFocused(args) => commands::send_focused(args),
         Command::QaCapture(args) => commands::capture(args),
         Command::Registry(args) => match args.command {
             RegistrySubcommand::RemoveStale(remove_args) => commands::remove_stale(remove_args),
+            RegistrySubcommand::CleanupZombies(cleanup_args) => {
+                commands::cleanup_zombies(cleanup_args)
+            }
         },
         Command::Doctor(args) => commands::doctor(args),
     }

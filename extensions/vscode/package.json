@@ -5,6 +5,9 @@
   "private": true,
   "type": "module",
   "main": "./dist/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
   "files": [
     "dist"
   ],
@@ -12,9 +15,54 @@
     "vscode": "^1.105.0"
   },
   "activationEvents": [
-    "onTerminalProfile:stp.tmuxTerminal"
+    "onTerminalProfile:stp.tmuxTerminal",
+    "onView:stp.terminals",
+    "onCommand:stp.newTerminal",
+    "onCommand:stp.showTerminal",
+    "onCommand:stp.terminateCurrentTerminal"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "stp.newTerminal",
+        "title": "New STP Terminal",
+        "category": "STP"
+      },
+      {
+        "command": "stp.showTerminal",
+        "title": "Show STP Terminal",
+        "category": "STP"
+      },
+      {
+        "command": "stp.terminateCurrentTerminal",
+        "title": "Terminate Current Terminal",
+        "category": "STP"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "stp.terminateCurrentTerminal",
+        "key": "cmd+shift+backspace",
+        "mac": "cmd+shift+backspace",
+        "when": "terminalFocus"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "stp.showTerminal",
+          "when": "false"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "stp.terminals",
+          "name": "STP Terminals"
+        }
+      ]
+    },
     "terminal": {
       "profiles": [
         {
@@ -34,6 +82,18 @@
           "scope": "machine",
           "default": "stp",
           "description": "Path to the stp binary."
+        },
+        "stp.tmuxSocket": {
+          "type": "string",
+          "scope": "machine",
+          "default": "stp-managed",
+          "description": "tmux socket name used for STP terminal sessions."
+        },
+        "stp.registryPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "Path to the STP registry JSON file. Empty uses the default XDG state path."
         }
       }
     }

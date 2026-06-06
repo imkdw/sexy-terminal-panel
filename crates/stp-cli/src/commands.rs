@@ -4,11 +4,15 @@ use std::process::Command as ProcessCommand;
 
 use anyhow::{Context, Result, anyhow, bail};
 use stp_core::ids::{TerminalId, WindowId};
-use stp_core::registry::{ManagedTerminal, RegistryStore};
+use stp_core::registry::{ManagedTerminal, RegistryStore, TerminalStatus};
 use stp_tmux::adapter::Tmux;
 
-use crate::cli::{CaptureArgs, DoctorArgs, OpenCodeArgs, RemoveStaleArgs, TerminalArgs};
+use crate::cli::{
+    CaptureArgs, CleanupZombiesArgs, DoctorArgs, OpenCodeArgs, RemoveStaleArgs, TerminalArgs,
+    TerminateArgs,
+};
 use crate::output::{stdout_line, stdout_text};
+use crate::session_cleanup::remove_zombie_sessions;
 use crate::state::selected_registry_path;
 
 pub fn terminal(args: TerminalArgs) -> Result<()> {
@@ -90,6 +94,38 @@ pub fn open_code(args: OpenCodeArgs) -> Result<()> {
     Ok(())
 }
 
+pub fn terminate(args: TerminateArgs) -> Result<()> {
+    if !args.yes {
+        bail!("refusing to terminate without --yes");
+    }
+    let terminal_id = TerminalId::parse(&args.terminal_id)?;
+    let store = RegistryStore::new(selected_registry_path(args.registry));
+    let mut registry = store.load()?;
+    let index = registry
+        .terminals
+        .iter()
+        .position(|terminal| terminal.terminal_id == terminal_id)
+        .ok_or_else(|| anyhow!("terminal not found: {terminal_id}"))?;
+    let terminal = registry.terminals[index].clone();
+    let tmux = Tmux::new(&terminal.tmux_socket);
+    let session_existed = tmux.list_sessions().is_ok_and(|sessions| {
+        sessions
+            .iter()
+            .any(|session| session == &terminal.tmux_session)
+    });
+
+    tmux.kill_session_if_exists(&terminal.tmux_session)?;
+    registry.terminals[index].status = TerminalStatus::Exited;
+    store.save(&registry)?;
+
+    if session_existed {
+        stdout_line(&format!("terminated {terminal_id}"))?;
+    } else {
+        stdout_line(&format!("already exited {terminal_id}"))?;
+    }
+    Ok(())
+}
+
 pub fn remove_stale(args: RemoveStaleArgs) -> Result<()> {
     if !args.yes {
         bail!("refusing to remove stale entries without --yes");
@@ -99,6 +135,18 @@ pub fn remove_stale(args: RemoveStaleArgs) -> Result<()> {
     let removed = registry.remove_stale();
     store.save(&registry)?;
     stdout_line(&format!("removed stale entries: {removed}"))?;
+    Ok(())
+}
+
+pub fn cleanup_zombies(args: CleanupZombiesArgs) -> Result<()> {
+    if !args.yes {
+        bail!("refusing to cleanup zombie entries without --yes");
+    }
+    let store = RegistryStore::new(selected_registry_path(args.registry));
+    let mut registry = store.load()?;
+    let removed = remove_zombie_sessions(&mut registry);
+    store.save(&registry)?;
+    stdout_line(&format!("removed zombie entries: {removed}"))?;
     Ok(())
 }
 

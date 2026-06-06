@@ -1,63 +1,177 @@
-import { randomUUID } from "node:crypto"
 import * as vscode from "vscode"
 
 import {
-  NoWorkspaceError,
-  buildTerminalArgs,
-  selectBinaryPath,
-  selectWorkspacePath,
-} from "./terminalProfile"
+  buildTerminateArgs,
+  cleanupZombieSessions,
+  showTrackedTerminal,
+  terminateCurrentTerminal,
+} from "./terminalCommands"
+import { currentBinaryPath, currentRegistryPath } from "./extensionConfig"
+import { loadLiveRegistrySessions } from "./stpRegistry"
+import { runStpCommand } from "./stpCommandRunner"
+import { createStpTerminalProfile } from "./stpTerminalProfile"
+import { TerminalSessionStore, type TerminalSession } from "./terminalSessions"
+import { StpTerminalTreeProvider, type StpTerminalTreeItem } from "./terminalTree"
 
 const PROFILE_ID = "stp.tmuxTerminal"
-const WINDOW_ID_KEY = "stp.windowId"
+const SESSIONS_VIEW_ID = "stp.terminals"
+const NEW_TERMINAL_COMMAND = "stp.newTerminal"
+const SHOW_TERMINAL_COMMAND = "stp.showTerminal"
+const TERMINATE_CURRENT_TERMINAL_COMMAND = "stp.terminateCurrentTerminal"
 
 export function activate(context: vscode.ExtensionContext): void {
+  const sessions = new TerminalSessionStore<vscode.Terminal>()
+  const treeProvider = new StpTerminalTreeProvider(sessions, () =>
+    loadLiveRegistrySessions(currentRegistryPath()),
+  )
   const provider: vscode.TerminalProfileProvider = {
     async provideTerminalProfile() {
-      try {
-        const windowId = await windowIdForContext(context)
-        const workspacePath = selectWorkspacePath(
-          (vscode.workspace.workspaceFolders ?? []).map((folder) => ({
-            path: folder.uri.fsPath,
-          })),
-        )
-        const binaryPath = selectBinaryPath(
-          vscode.workspace.getConfiguration("stp").inspect<string>("binaryPath"),
-        )
-        const args = buildTerminalArgs({
-          binaryPath,
-          workspacePath,
-          windowId,
-          terminalId: randomUUID(),
-        })
-        const shellPath = args[0]
-        if (shellPath === undefined) {
-          throw new NoWorkspaceError()
-        }
-        return new vscode.TerminalProfile({
-          name: "STP: tmux",
-          shellPath,
-          shellArgs: args.slice(1),
-        })
-      } catch (error) {
-        if (error instanceof NoWorkspaceError) {
-          await vscode.window.showErrorMessage(error.message)
-        }
-        throw error
-      }
+      const { profile } = await createStpTerminalProfile(context, sessions)
+      return profile
     },
   }
-  context.subscriptions.push(vscode.window.registerTerminalProfileProvider(PROFILE_ID, provider))
+  context.subscriptions.push(
+    vscode.window.registerTerminalProfileProvider(PROFILE_ID, provider),
+    vscode.window.registerTreeDataProvider(SESSIONS_VIEW_ID, treeProvider),
+    vscode.commands.registerCommand(NEW_TERMINAL_COMMAND, async () => {
+      const { pending, profile } = await createStpTerminalProfile(context, sessions)
+      const terminal = vscode.window.createTerminal(profile.options)
+      const session = sessions.attachOpenedTerminal({
+        initialName: pending.name,
+        name: pending.name,
+        terminal,
+      })
+      if (session !== undefined) {
+        treeProvider.refresh()
+      }
+      terminal.show(false)
+      return terminal
+    }),
+    vscode.commands.registerCommand(
+      SHOW_TERMINAL_COMMAND,
+      (item: StpTerminalTreeItem<vscode.Terminal> | undefined) => {
+        return showStpTerminalTreeItem(context, sessions, treeProvider, item)
+      },
+    ),
+    vscode.commands.registerCommand(TERMINATE_CURRENT_TERMINAL_COMMAND, () => {
+      return terminateCurrentStpTerminal(sessions, treeProvider)
+    }),
+    vscode.window.onDidOpenTerminal((terminal) => {
+      const initialName = terminalCreationName(terminal)
+      const session = sessions.attachOpenedTerminal(
+        initialName === undefined
+          ? { name: terminal.name, terminal }
+          : { initialName, name: terminal.name, terminal },
+      )
+      if (session !== undefined) {
+        treeProvider.refresh()
+      }
+    }),
+    vscode.window.onDidCloseTerminal((terminal) => {
+      const session = sessions.removeTerminal(terminal)
+      if (session !== undefined) {
+        void terminateClosedStpTerminal(session, treeProvider)
+        treeProvider.refresh()
+      }
+    }),
+    treeProvider,
+  )
+  void cleanupZombieRegistry(treeProvider)
 }
 
 export function deactivate(): void {}
 
-async function windowIdForContext(context: vscode.ExtensionContext): Promise<string> {
-  const existing = context.workspaceState.get<string>(WINDOW_ID_KEY)
-  if (existing !== undefined) {
-    return existing
+type StpTerminalSession = TerminalSession<vscode.Terminal>
+
+function terminateCurrentStpTerminal(
+  sessions: TerminalSessionStore<vscode.Terminal>,
+  treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
+): Promise<unknown> {
+  return terminateCurrentTerminal({
+    activeTerminal: vscode.window.activeTerminal,
+    binaryPath: currentBinaryPath(),
+    messages: {
+      showInformationMessage(message) {
+        void vscode.window.showInformationMessage(message)
+      },
+      showErrorMessage(message) {
+        void vscode.window.showErrorMessage(message)
+      },
+    },
+    refresh() {
+      treeProvider.refresh()
+    },
+    runner: { run: runStpCommand },
+    store: sessions,
+  })
+}
+
+async function showStpTerminalTreeItem(
+  context: vscode.ExtensionContext,
+  sessions: TerminalSessionStore<vscode.Terminal>,
+  treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
+  item: StpTerminalTreeItem<vscode.Terminal> | undefined,
+): Promise<void> {
+  if (item === undefined) {
+    return
   }
-  const next = randomUUID()
-  await context.workspaceState.update(WINDOW_ID_KEY, next)
-  return next
+  if (item.kind === "opened") {
+    showTrackedTerminal(item.session)
+    return
+  }
+  const openedSession = sessions.sessionForId(item.session.terminalId)
+  if (openedSession !== undefined) {
+    showTrackedTerminal(openedSession)
+    return
+  }
+  const { pending, profile } = await createStpTerminalProfile(context, sessions, {
+    ...item.session,
+    binaryPath: currentBinaryPath(),
+    registryPath: currentRegistryPath(),
+  })
+  const terminal = vscode.window.createTerminal(profile.options)
+  const session = sessions.attachOpenedTerminal({
+    initialName: pending.name,
+    name: pending.name,
+    terminal,
+  })
+  if (session !== undefined) {
+    treeProvider.refresh()
+  }
+  terminal.show(false)
+}
+
+async function terminateClosedStpTerminal(
+  session: StpTerminalSession,
+  treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
+): Promise<void> {
+  const result = await runStpCommand(
+    session.binaryPath ?? currentBinaryPath(),
+    buildTerminateArgs(session.terminalId, session.registryPath),
+  )
+  if (result.kind === "failure") {
+    await vscode.window.showErrorMessage(`Failed to cleanup STP terminal: ${result.message}`)
+  }
+  treeProvider.refresh()
+}
+
+async function cleanupZombieRegistry(
+  treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
+): Promise<void> {
+  const result = await cleanupZombieSessions({
+    binaryPath: currentBinaryPath(),
+    registryPath: currentRegistryPath(),
+    runner: { run: runStpCommand },
+  })
+  if (result.kind === "failed") {
+    await vscode.window.showErrorMessage(`Failed to cleanup zombie STP sessions: ${result.message}`)
+  }
+  treeProvider.refresh()
+}
+
+function terminalCreationName(terminal: vscode.Terminal): string | undefined {
+  const { creationOptions } = terminal
+  return "name" in creationOptions && typeof creationOptions.name === "string"
+    ? creationOptions.name
+    : undefined
 }

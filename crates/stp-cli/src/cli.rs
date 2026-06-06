@@ -14,6 +14,7 @@ pub enum Command {
     Terminal(TerminalArgs),
     Panel(PanelArgs),
     OpenCode(OpenCodeArgs),
+    Terminate(TerminateArgs),
     QaSendFocused(SendFocusedArgs),
     QaCapture(CaptureArgs),
     Registry(RegistryCommand),
@@ -67,6 +68,16 @@ pub struct OpenCodeArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct TerminateArgs {
+    #[arg(long, env = "STP_REGISTRY")]
+    pub registry: Option<PathBuf>,
+    #[arg(long)]
+    pub terminal_id: String,
+    #[arg(long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct SendFocusedArgs {
     #[command(flatten)]
     pub state: CommonStateArgs,
@@ -95,6 +106,7 @@ pub struct DoctorArgs {
 #[derive(Debug, Subcommand)]
 pub enum RegistrySubcommand {
     RemoveStale(RemoveStaleArgs),
+    CleanupZombies(CleanupZombiesArgs),
 }
 
 #[derive(Debug, Args)]
@@ -105,6 +117,14 @@ pub struct RegistryCommand {
 
 #[derive(Debug, Args)]
 pub struct RemoveStaleArgs {
+    #[arg(long, env = "STP_REGISTRY")]
+    pub registry: Option<PathBuf>,
+    #[arg(long)]
+    pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct CleanupZombiesArgs {
     #[arg(long, env = "STP_REGISTRY")]
     pub registry: Option<PathBuf>,
     #[arg(long)]

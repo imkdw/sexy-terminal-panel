@@ -6,6 +6,14 @@ Sexy Terminal Panel is a macOS-first local tool for keeping VS Code worktree ter
 
 - `stp terminal` registers a workspace terminal and starts or attaches a tmux session.
 - `stp panel` shows managed terminals in a native terminal grid.
+- The VS Code extension adds an Explorer `STP Terminals` view that lists tracked
+  STP integrated terminals and live registry sessions.
+- Clicking an `STP Terminals` item shows the matching integrated terminal or
+  opens one that attaches to the selected registry session.
+- `stp terminate --terminal-id <id> --yes` terminates one registered tmux-backed
+  terminal and marks its registry entry as `exited`.
+- `stp registry cleanup-zombies --yes` removes registry entries whose tmux
+  sessions are already gone.
 - The default panel layout is `2x2`; pass `--layout 3x3` when you need the larger grid.
 - `h/j/k/l`, arrows, and `Tab` move panel focus.
 - `stp qa-send-focused` and panel actions route by terminal id, not visual index.
@@ -39,6 +47,15 @@ If VS Code cannot find `stp` when launched outside a shell, set:
 "stp.binaryPath": "/absolute/path/to/stp"
 ```
 
+Tracked STP terminals appear in Explorer under `STP Terminals`. Select an item
+there to reveal that integrated terminal, or to create an integrated terminal
+that attaches to the selected live registry session. The extension runs zombie
+cleanup on activation and when a tracked STP terminal closes, so disconnected
+tmux sessions do not stay in the sidebar. With an STP terminal focused,
+`cmd+shift+backspace` runs `stp terminate --terminal-id <id> --yes`; the
+extension disposes the integrated terminal only after the CLI termination
+succeeds. Non-STP terminals are ignored.
+
 ## State
 
 Registry path:
@@ -46,6 +63,8 @@ Registry path:
 ```text
 ${XDG_STATE_HOME:-~/.local/state}/sexy-terminal-panel/registry.json
 ```
+
+Set `stp.registryPath` when VS Code should use a non-default registry file.
 
 Managed tmux socket default:
 
@@ -59,6 +78,12 @@ stp-managed
 - `g`: toggle `3x3`/`2x2`
 - `h/j/k/l` and arrow keys: move focus
 - `Tab`: next cell
+- `prefix K`: confirm and terminate the selected managed terminal from
+  `stp panel`
+- VS Code `cmd+shift+backspace`: terminate the focused tracked STP terminal
+
+The native panel uses `prefix K`, not raw `K`, so uppercase input still reaches
+attached terminals.
 
 ## Verification
 

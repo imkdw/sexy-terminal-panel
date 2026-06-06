@@ -58,6 +58,34 @@ impl Tmux {
         self.run(["select-layout", "-t", target, "tiled"]).map(drop)
     }
 
+    pub fn bind_key(&self, key: &str, command: &str) -> Result<(), TmuxError> {
+        self.run(["bind-key", key, command]).map(drop)
+    }
+
+    pub fn bind_key_args(&self, key: &str, command: &str, args: &[&str]) -> Result<(), TmuxError> {
+        let mut tmux_args = Vec::with_capacity(args.len().saturating_add(3));
+        tmux_args.push("bind-key");
+        tmux_args.push(key);
+        tmux_args.push(command);
+        tmux_args.extend_from_slice(args);
+        self.run_args(&tmux_args).map(drop)
+    }
+
+    pub fn set_pane_title(&self, target: &str, title: &str) -> Result<(), TmuxError> {
+        self.run(["select-pane", "-t", target, "-T", title])
+            .map(drop)
+    }
+
+    pub fn list_pane_ids(&self, target: &str) -> Result<Vec<String>, TmuxError> {
+        let output = self.run(["list-panes", "-t", target, "-F", "#{pane_id}"])?;
+        Ok(output
+            .stdout
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
     pub fn set_option(&self, target: &str, name: &str, value: &str) -> Result<(), TmuxError> {
         self.run(["set-option", "-t", target, name, value])
             .map(drop)
@@ -93,6 +121,10 @@ impl Tmux {
     }
 
     fn run<const N: usize>(&self, args: [&str; N]) -> Result<TmuxOutput, TmuxError> {
+        self.run_args(&args)
+    }
+
+    fn run_args(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError> {
         let output = Command::new("tmux")
             .arg("-L")
             .arg(&self.socket_name)
@@ -178,7 +210,7 @@ pub enum TmuxError {
 }
 
 impl TmuxError {
-    fn is_missing_session(&self) -> bool {
+    pub fn is_missing_session(&self) -> bool {
         match self {
             Self::Spawn { .. } => false,
             Self::CommandFailed { stdout, stderr, .. } => {

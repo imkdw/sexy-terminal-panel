@@ -3,6 +3,8 @@ export type TerminalProfileInput = Readonly<{
   workspacePath: string
   windowId: string
   terminalId: string
+  tmuxSocket: string
+  registryPath?: string
   shellPath?: string
 }>
 
@@ -11,6 +13,11 @@ export type WorkspaceCandidate = Readonly<{
 }>
 
 export type BinaryPathConfiguration = Readonly<{
+  defaultValue?: string
+  globalValue?: string
+}>
+
+export type TmuxSocketConfiguration = Readonly<{
   defaultValue?: string
   globalValue?: string
 }>
@@ -32,7 +39,12 @@ export function buildTerminalArgs(input: TerminalProfileInput): readonly string[
     input.windowId,
     "--terminal-id",
     input.terminalId,
+    "--socket",
+    input.tmuxSocket,
   ]
+  if (input.registryPath !== undefined && input.registryPath.length > 0) {
+    args.push("--registry", input.registryPath)
+  }
   if (input.shellPath !== undefined && input.shellPath.length > 0) {
     return [...args, "--shell", input.shellPath]
   }
@@ -55,4 +67,14 @@ export function selectBinaryPath(configuration: BinaryPathConfiguration | undefi
     return configuration.defaultValue
   }
   return "stp"
+}
+
+export function selectTmuxSocket(configuration: TmuxSocketConfiguration | undefined): string {
+  if (configuration?.globalValue !== undefined && configuration.globalValue.length > 0) {
+    return configuration.globalValue
+  }
+  if (configuration?.defaultValue !== undefined && configuration.defaultValue.length > 0) {
+    return configuration.defaultValue
+  }
+  return "stp-managed"
 }

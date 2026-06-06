@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EVIDENCE="$ROOT/.omo/evidence/terminal-panel"
+EVIDENCE="$ROOT/.omo/evidence/stp-panel-session-sidebar"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/stp-release.XXXXXX")"
 
 cleanup() {
