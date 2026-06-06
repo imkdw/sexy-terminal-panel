@@ -4,6 +4,7 @@ use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
 use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
 
 use super::grid::{LineEnding, display_text, render, truncate_to_width};
+use super::render_once;
 use crate::panel::Layout;
 
 #[test]
@@ -35,6 +36,26 @@ fn render_uses_grid_columns_for_slots() {
     assert!(rendered.contains("|>1: one"));
     assert!(rendered.contains("| 2: <empty>"));
     assert!(rendered.contains("| 3: <empty>"));
+}
+
+#[test]
+#[allow(clippy::expect_used)]
+fn render_once_shows_session_list_and_right_grid_preview() {
+    let registry = Registry {
+        terminals: vec![terminal(
+            "00000000-0000-0000-0000-000000000101",
+            "worktree-a",
+            "feature/sidebar",
+        )],
+    };
+
+    let rendered = render_once(&registry, Layout::ThreeByThree).expect("render");
+
+    assert!(rendered.contains("STP sessions"));
+    assert!(rendered.contains("Click a session"));
+    assert!(rendered.contains("1 00000000 worktree-a feature/sidebar"));
+    assert!(rendered.contains("STP panel\nLayout: 3x3 | Focus slot: 1\n"));
+    assert!(rendered.contains("|>1: worktree-a"));
 }
 
 #[test]

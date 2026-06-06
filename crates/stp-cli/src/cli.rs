@@ -13,6 +13,8 @@ pub struct Cli {
 pub enum Command {
     Terminal(TerminalArgs),
     Panel(PanelArgs),
+    #[command(hide = true)]
+    PanelSelect(PanelSelectArgs),
     OpenCode(OpenCodeArgs),
     Terminate(TerminateArgs),
     QaSendFocused(SendFocusedArgs),
@@ -53,6 +55,14 @@ pub struct PanelArgs {
     pub layout: String,
     #[arg(long)]
     pub once: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct PanelSelectArgs {
+    #[command(flatten)]
+    pub state: CommonStateArgs,
+    #[arg(long)]
+    pub mouse_line: String,
 }
 
 #[derive(Debug, Args)]

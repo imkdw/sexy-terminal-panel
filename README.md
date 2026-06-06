@@ -5,7 +5,8 @@ Sexy Terminal Panel is a macOS-first local tool for keeping VS Code worktree ter
 ## MVP Scope
 
 - `stp terminal` registers a workspace terminal and starts or attaches a tmux session.
-- `stp panel` shows managed terminals in a native terminal grid.
+- `stp panel` shows a native left session list next to the right content grid
+  of managed terminal panes.
 - The VS Code extension adds an Explorer `STP Terminals` view that lists tracked
   STP integrated terminals and live registry sessions.
 - Clicking an `STP Terminals` item shows the matching integrated terminal or
@@ -15,6 +16,9 @@ Sexy Terminal Panel is a macOS-first local tool for keeping VS Code worktree ter
 - `stp registry cleanup-zombies --yes` removes registry entries whose tmux
   sessions are already gone.
 - The default panel layout is `2x2`; pass `--layout 3x3` when you need the larger grid.
+- Click a session in the native panel's left list to focus its existing right
+  pane. If that session is not visible, the panel opens it in the first empty
+  right pane, or replaces the rightmost content pane when the grid is full.
 - `h/j/k/l`, arrows, and `Tab` move panel focus.
 - `stp qa-send-focused` and panel actions route by terminal id, not visual index.
 - `stp open-code` opens the registered workspace through `code --new-window` or records the deterministic fallback in dry-run mode.
@@ -76,6 +80,8 @@ stp-managed
 
 - `q`: quit panel only
 - `g`: toggle `3x3`/`2x2`
+- left session list click: focus that session, or open it in the first empty
+  right-side pane; when the grid is full, replace the rightmost content pane
 - `h/j/k/l` and arrow keys: move focus
 - `Tab`: next cell
 - `prefix K`: confirm and terminate the selected managed terminal from

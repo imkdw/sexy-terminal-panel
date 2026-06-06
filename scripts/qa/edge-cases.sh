@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EVIDENCE="$ROOT/.omo/evidence/stp-panel-session-sidebar"
+EVIDENCE="$ROOT/.omo/evidence/stp-panel-native-session-sidebar"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/stp-edge.XXXXXX")"
 REGISTRY="$TMP_DIR/registry.json"
 TERMINAL_ID="00000000-0000-0000-0000-000000000801"
@@ -21,6 +21,8 @@ cargo test -p stp-core malformed_registry_when_invalid_json -- --nocapture | tee
 cargo test -p stp-core remove_stale_when_registry_contains_live_and_stale -- --nocapture | tee "$EVIDENCE/C003-edge-remove-stale.txt"
 cargo test -p stp invalid_workspace_fails_when_terminal_command_runs -- --nocapture | tee "$EVIDENCE/C003-edge-invalid-workspace.txt"
 cargo test -p stp-tmux missing_target_returns_error_when_session_absent -- --nocapture | tee "$EVIDENCE/C003-edge-missing-target.txt"
+cargo test -p stp panel_sidebar_click_on_header_is_noop -- --nocapture | tee "$EVIDENCE/edge-invalid-click.txt"
+cp "$EVIDENCE/C003-edge-missing-target.txt" "$EVIDENCE/edge-missing-session.txt"
 
 if ./target/debug/stp open-code --registry "$TMP_DIR/registry.json" --terminal-id 00000000-0000-0000-0000-000000009999 > "$EVIDENCE/C003-edge-missing-terminal.txt" 2>&1; then
   printf 'missing terminal unexpectedly succeeded\n' >&2

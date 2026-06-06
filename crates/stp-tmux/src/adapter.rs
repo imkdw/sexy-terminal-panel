@@ -1,10 +1,10 @@
-use std::process::{Command, Stdio};
-
-use thiserror::Error;
+pub use crate::binding::BindingCommand;
+pub use crate::error::{TmuxError, TmuxOutput};
+pub use crate::pane::PaneInfo;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Tmux {
-    socket_name: String,
+    pub(crate) socket_name: String,
 }
 
 impl Tmux {
@@ -54,6 +54,81 @@ impl Tmux {
             .map(drop)
     }
 
+    pub fn split_window_with_id(
+        &self,
+        target: &str,
+        shell_command: &str,
+    ) -> Result<String, TmuxError> {
+        self.split_window_with_id_options(target, None, false, shell_command)
+    }
+
+    pub fn split_window_percent_with_id(
+        &self,
+        target: &str,
+        percent: usize,
+        shell_command: &str,
+    ) -> Result<String, TmuxError> {
+        self.split_window_with_id_options(target, Some(percent), false, shell_command)
+    }
+
+    pub fn split_window_right_with_id(
+        &self,
+        target: &str,
+        shell_command: &str,
+    ) -> Result<String, TmuxError> {
+        self.split_window_with_id_options(target, None, true, shell_command)
+    }
+
+    pub fn split_window_right_percent_with_id(
+        &self,
+        target: &str,
+        percent: usize,
+        shell_command: &str,
+    ) -> Result<String, TmuxError> {
+        self.split_window_with_id_options(target, Some(percent), true, shell_command)
+    }
+
+    fn split_window_with_id_options(
+        &self,
+        target: &str,
+        percent: Option<usize>,
+        horizontal: bool,
+        shell_command: &str,
+    ) -> Result<String, TmuxError> {
+        let size = percent.map(|value| value.to_string());
+        let mut args = vec!["split-window", "-d"];
+        if horizontal {
+            args.push("-h");
+        }
+        if let Some(size) = size.as_deref() {
+            args.extend(["-p", size]);
+        }
+        args.extend(["-P", "-F", "#{pane_id}", "-t", target, shell_command]);
+        let output = self.run_args(&args)?;
+        Ok(output.stdout.trim().to_owned())
+    }
+
+    pub fn split_window_left(
+        &self,
+        target: &str,
+        width: usize,
+        shell_command: &str,
+    ) -> Result<(), TmuxError> {
+        let size = width.to_string();
+        self.run([
+            "split-window",
+            "-d",
+            "-h",
+            "-b",
+            "-l",
+            size.as_str(),
+            "-t",
+            target,
+            shell_command,
+        ])
+        .map(drop)
+    }
+
     pub fn select_tiled_layout(&self, target: &str) -> Result<(), TmuxError> {
         self.run(["select-layout", "-t", target, "tiled"]).map(drop)
     }
@@ -62,17 +137,57 @@ impl Tmux {
         self.run(["bind-key", key, command]).map(drop)
     }
 
-    pub fn bind_key_args(&self, key: &str, command: &str, args: &[&str]) -> Result<(), TmuxError> {
-        let mut tmux_args = Vec::with_capacity(args.len().saturating_add(3));
+    pub fn bind_key_command(
+        &self,
+        key: &str,
+        command: &BindingCommand<'_>,
+    ) -> Result<(), TmuxError> {
+        let mut tmux_args = Vec::with_capacity(command.arguments.len().saturating_add(3));
         tmux_args.push("bind-key");
         tmux_args.push(key);
-        tmux_args.push(command);
-        tmux_args.extend_from_slice(args);
+        tmux_args.push(command.command);
+        tmux_args.extend(command.arguments.iter().copied());
+        self.run_args(&tmux_args).map(drop)
+    }
+
+    pub fn bind_key_in_table(
+        &self,
+        table: &str,
+        key: &str,
+        command: &BindingCommand<'_>,
+    ) -> Result<(), TmuxError> {
+        let mut tmux_args = Vec::with_capacity(command.arguments.len().saturating_add(5));
+        tmux_args.push("bind-key");
+        tmux_args.push("-T");
+        tmux_args.push(table);
+        tmux_args.push(key);
+        tmux_args.push(command.command);
+        tmux_args.extend(command.arguments.iter().copied());
         self.run_args(&tmux_args).map(drop)
     }
 
     pub fn set_pane_title(&self, target: &str, title: &str) -> Result<(), TmuxError> {
         self.run(["select-pane", "-t", target, "-T", title])
+            .map(drop)
+    }
+
+    pub fn set_pane_option(&self, target: &str, name: &str, value: &str) -> Result<(), TmuxError> {
+        self.run(["set-option", "-p", "-t", target, name, value])
+            .map(drop)
+    }
+
+    pub fn select_pane(&self, target: &str) -> Result<(), TmuxError> {
+        self.run(["select-pane", "-t", target]).map(drop)
+    }
+
+    pub fn display_message(&self, target: &str, message: &str) -> Result<(), TmuxError> {
+        self.run(["display-message", "-t", target, message])
+            .map(drop)
+    }
+
+    pub fn resize_pane_width(&self, target: &str, width: usize) -> Result<(), TmuxError> {
+        let size = width.to_string();
+        self.run(["resize-pane", "-t", target, "-x", size.as_str()])
             .map(drop)
     }
 
@@ -86,8 +201,48 @@ impl Tmux {
             .collect())
     }
 
+    pub fn list_panes_with_titles(&self, target: &str) -> Result<Vec<PaneInfo>, TmuxError> {
+        let output = self.run([
+            "list-panes",
+            "-t",
+            target,
+            "-F",
+            "#{pane_id}\t#{pane_title}\t#{@stp-pane-key}",
+        ])?;
+        Ok(output
+            .stdout
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.splitn(3, '\t');
+                let pane_id = parts.next()?;
+                let title = parts.next()?;
+                let pane_key = parts.next().map_or("", |value| value);
+                Some(PaneInfo {
+                    pane_id: pane_id.to_owned(),
+                    title: title.to_owned(),
+                    pane_key: pane_key.to_owned(),
+                })
+            })
+            .collect())
+    }
+
+    pub fn respawn_pane(&self, target: &str, shell_command: &str) -> Result<(), TmuxError> {
+        self.run(["respawn-pane", "-k", "-t", target, shell_command])
+            .map(drop)
+    }
+
     pub fn set_option(&self, target: &str, name: &str, value: &str) -> Result<(), TmuxError> {
         self.run(["set-option", "-t", target, name, value])
+            .map(drop)
+    }
+
+    pub fn set_window_option(
+        &self,
+        target: &str,
+        name: &str,
+        value: &str,
+    ) -> Result<(), TmuxError> {
+        self.run(["set-window-option", "-t", target, name, value])
             .map(drop)
     }
 
@@ -118,107 +273,5 @@ impl Tmux {
 
     pub fn kill_server(&self) -> Result<(), TmuxError> {
         self.run(["kill-server"]).map(drop)
-    }
-
-    fn run<const N: usize>(&self, args: [&str; N]) -> Result<TmuxOutput, TmuxError> {
-        self.run_args(&args)
-    }
-
-    fn run_args(&self, args: &[&str]) -> Result<TmuxOutput, TmuxError> {
-        let output = Command::new("tmux")
-            .arg("-L")
-            .arg(&self.socket_name)
-            .args(args)
-            .output()
-            .map_err(|source| TmuxError::Spawn {
-                socket: self.socket_name.clone(),
-                source,
-            })?;
-        let status = output.status.code().unwrap_or(-1);
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let command = args.join(" ");
-        if output.status.success() {
-            Ok(TmuxOutput {
-                status,
-                stdout,
-                stderr,
-            })
-        } else {
-            Err(TmuxError::CommandFailed {
-                socket: self.socket_name.clone(),
-                command,
-                status,
-                stdout,
-                stderr,
-            })
-        }
-    }
-
-    fn run_attached<const N: usize>(&self, args: [&str; N]) -> Result<(), TmuxError> {
-        let status = Command::new("tmux")
-            .arg("-L")
-            .arg(&self.socket_name)
-            .args(args)
-            .env_remove("TMUX")
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|source| TmuxError::Spawn {
-                socket: self.socket_name.clone(),
-                source,
-            })?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err(TmuxError::CommandFailed {
-                socket: self.socket_name.clone(),
-                command: args.join(" "),
-                status: status.code().unwrap_or(-1),
-                stdout: String::new(),
-                stderr: String::new(),
-            })
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TmuxOutput {
-    pub status: i32,
-    pub stdout: String,
-    pub stderr: String,
-}
-
-#[derive(Debug, Error)]
-pub enum TmuxError {
-    #[error("failed to spawn tmux for socket {socket}: {source}")]
-    Spawn {
-        socket: String,
-        source: std::io::Error,
-    },
-    #[error(
-        "tmux command failed on socket {socket} with status {status} for `{command}`: {stderr}{stdout}"
-    )]
-    CommandFailed {
-        socket: String,
-        command: String,
-        status: i32,
-        stdout: String,
-        stderr: String,
-    },
-}
-
-impl TmuxError {
-    pub fn is_missing_session(&self) -> bool {
-        match self {
-            Self::Spawn { .. } => false,
-            Self::CommandFailed { stdout, stderr, .. } => {
-                stdout.contains("can't find session")
-                    || stderr.contains("can't find session")
-                    || stdout.contains("no server running")
-                    || stderr.contains("no server running")
-            }
-        }
     }
 }

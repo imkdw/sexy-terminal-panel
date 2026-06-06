@@ -123,7 +123,7 @@ fn wait_for_any_pane_title(socket: &str, expected_title: &str) {
                 "-t",
                 "stp-panel",
                 "-F",
-                "#{pane_index}:#{pane_title}",
+                "#{pane_index}:#{@stp-pane-key}",
             ])
             .output()
             .expect("pane titles");

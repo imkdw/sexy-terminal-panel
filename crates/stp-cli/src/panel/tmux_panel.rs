@@ -1,10 +1,15 @@
-use std::path::Path;
-
 use anyhow::{Context, bail};
-use stp_core::registry::{ManagedTerminal, Registry, RegistryStore, TerminalStatus};
+use stp_core::registry::RegistryStore;
 use stp_tmux::adapter::Tmux;
 
 use super::Layout;
+#[cfg(test)]
+pub(super) use super::bindings::terminate_binding;
+use super::bindings::{install_mouse_binding, install_terminate_binding};
+use super::layout;
+#[cfg(test)]
+pub(super) use super::layout::{pane_commands, pane_titles};
+use super::session_sidebar;
 use crate::session_cleanup::mark_missing_live_sessions_stale;
 
 const PANEL_SESSION: &str = "stp-panel";
@@ -15,242 +20,153 @@ pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow
     if mark_missing_live_sessions_stale(&mut registry) {
         store.save(&registry)?;
     }
-    let commands = pane_commands(&registry, layout);
-    let titles = pane_titles(&registry, layout);
-    let first_command = commands.first().context("panel layout has no panes")?;
+    let commands = layout::pane_commands(&registry, layout);
+    let titles = layout::pane_titles(&registry, layout);
     let tmux = Tmux::new(panel_socket);
     tmux.kill_session_if_exists(PANEL_SESSION)?;
-    tmux.new_session_with_window(PANEL_SESSION, PANEL_WINDOW, first_command)?;
+    tmux.new_session_with_window(
+        PANEL_SESSION,
+        PANEL_WINDOW,
+        &session_sidebar::command(&registry),
+    )?;
     tmux.set_option(PANEL_SESSION, "status", "off")?;
     tmux.set_option(PANEL_SESSION, "mouse", "on")?;
-    install_terminate_binding(&tmux, store.path())?;
-    for command in commands.iter().skip(1) {
-        tmux.split_window(PANEL_SESSION, command)?;
-        tmux.select_tiled_layout(PANEL_SESSION)?;
-    }
-    tmux.select_tiled_layout(PANEL_SESSION)?;
-    let pane_ids = tmux.list_pane_ids(PANEL_SESSION)?;
-    if pane_ids.len() != titles.len() {
+    tmux.set_window_option(PANEL_SESSION, "allow-rename", "off")?;
+    tmux.set_window_option(PANEL_SESSION, "allow-set-title", "off")?;
+    tmux.set_window_option(PANEL_SESSION, "automatic-rename", "off")?;
+    let sidebar_pane = tmux
+        .list_pane_ids(PANEL_SESSION)?
+        .first()
+        .context("panel session has no sidebar pane")?
+        .clone();
+    set_pane_key(&tmux, &sidebar_pane, session_sidebar::TITLE)?;
+    install_mouse_binding(&tmux, store.path(), panel_socket)?;
+    install_terminate_binding(&tmux, store.path(), panel_socket)?;
+    let first_command = commands.first().context("panel layout has no panes")?;
+    let first_content_pane = tmux.split_window_right_with_id(&sidebar_pane, first_command)?;
+    tmux.resize_pane_width(&sidebar_pane, session_sidebar::WIDTH)?;
+    let content_pane_ids = split_content_grid(&tmux, &first_content_pane, &commands, layout)?;
+    tmux.resize_pane_width(&sidebar_pane, session_sidebar::WIDTH)?;
+    if content_pane_ids.len() != titles.len() {
         bail!(
             "panel pane count mismatch: expected {}, got {}",
             titles.len(),
-            pane_ids.len()
+            content_pane_ids.len()
         );
     }
-    for (pane_id, title) in pane_ids.iter().zip(titles.iter()) {
-        tmux.set_pane_title(pane_id, title)?;
+    for (pane_id, title) in content_pane_ids.iter().zip(titles.iter()) {
+        set_pane_key(&tmux, pane_id, title)?;
     }
+    tmux.select_pane(&first_content_pane)?;
     tmux.attach_session(PANEL_SESSION)?;
     Ok(())
 }
 
-fn pane_commands(registry: &Registry, layout: Layout) -> Vec<String> {
-    let capacity = layout.capacity();
-    let terminals = panel_terminals(registry);
-    (0..capacity)
-        .map(|slot| {
-            terminals
-                .get(slot)
-                .copied()
-                .map_or_else(|| empty_command(slot), terminal_command)
-        })
-        .collect()
+fn split_content_grid(
+    tmux: &Tmux,
+    first_content_pane: &str,
+    commands: &[String],
+    layout: Layout,
+) -> anyhow::Result<Vec<String>> {
+    match layout {
+        Layout::TwoByTwo => split_two_by_two(tmux, first_content_pane, commands),
+        Layout::ThreeByThree => split_three_by_three(tmux, first_content_pane, commands),
+    }
 }
 
-fn pane_titles(registry: &Registry, layout: Layout) -> Vec<String> {
-    let capacity = layout.capacity();
-    let terminals = panel_terminals(registry);
-    (0..capacity)
-        .map(|slot| {
-            terminals.get(slot).map_or_else(
-                || format!("empty:{}", slot.saturating_add(1)),
-                |terminal| terminal.terminal_id.to_string(),
-            )
-        })
-        .collect()
+fn split_two_by_two(
+    tmux: &Tmux,
+    first_content_pane: &str,
+    commands: &[String],
+) -> anyhow::Result<Vec<String>> {
+    let top_left = first_content_pane.to_owned();
+    let top_right =
+        tmux.split_window_right_percent_with_id(&top_left, 50, command_at(commands, 1)?)?;
+    let bottom_left = tmux.split_window_percent_with_id(&top_left, 50, command_at(commands, 2)?)?;
+    let bottom_right =
+        tmux.split_window_percent_with_id(&top_right, 50, command_at(commands, 3)?)?;
+    Ok(vec![top_left, top_right, bottom_left, bottom_right])
 }
 
-fn panel_terminals(registry: &Registry) -> Vec<&ManagedTerminal> {
-    registry
-        .terminals
+fn split_three_by_three(
+    tmux: &Tmux,
+    first_content_pane: &str,
+    commands: &[String],
+) -> anyhow::Result<Vec<String>> {
+    let top_left = first_content_pane.to_owned();
+    let top_middle =
+        tmux.split_window_right_percent_with_id(&top_left, 67, command_at(commands, 1)?)?;
+    let top_right =
+        tmux.split_window_right_percent_with_id(&top_middle, 50, command_at(commands, 2)?)?;
+    let middle_left = tmux.split_window_percent_with_id(&top_left, 67, command_at(commands, 3)?)?;
+    let middle_middle =
+        tmux.split_window_percent_with_id(&top_middle, 67, command_at(commands, 4)?)?;
+    let middle_right =
+        tmux.split_window_percent_with_id(&top_right, 67, command_at(commands, 5)?)?;
+    let bottom_left =
+        tmux.split_window_percent_with_id(&middle_left, 50, command_at(commands, 6)?)?;
+    let bottom_middle =
+        tmux.split_window_percent_with_id(&middle_middle, 50, command_at(commands, 7)?)?;
+    let bottom_right =
+        tmux.split_window_percent_with_id(&middle_right, 50, command_at(commands, 8)?)?;
+    Ok(vec![
+        top_left,
+        top_middle,
+        top_right,
+        middle_left,
+        middle_middle,
+        middle_right,
+        bottom_left,
+        bottom_middle,
+        bottom_right,
+    ])
+}
+
+fn command_at(commands: &[String], index: usize) -> anyhow::Result<&str> {
+    commands
+        .get(index)
+        .map(String::as_str)
+        .with_context(|| format!("panel layout missing command for slot {}", index + 1))
+}
+
+pub fn select_from_sidebar(
+    store: &RegistryStore,
+    mouse_line: &str,
+    panel_socket: &str,
+) -> anyhow::Result<()> {
+    let registry = store.load()?;
+    let Some(terminal) = session_sidebar::terminal_for_mouse_line(&registry, mouse_line) else {
+        Tmux::new(panel_socket).display_message(PANEL_SESSION, "No STP session for sidebar row")?;
+        return Ok(());
+    };
+    let tmux = Tmux::new(panel_socket);
+    let panes = tmux.list_panes_with_titles(PANEL_SESSION)?;
+    let terminal_id = terminal.terminal_id.to_string();
+    if let Some(pane) = panes.iter().find(|pane| pane.pane_key == terminal_id) {
+        tmux.select_pane(&pane.pane_id)?;
+        return Ok(());
+    }
+    let target = panes
         .iter()
-        .filter(|terminal| terminal.status == TerminalStatus::Live)
-        .collect()
-}
-
-fn terminal_command(terminal: &ManagedTerminal) -> String {
-    format!(
-        "env -u TMUX tmux -L {} attach-session -t {} || exec ${{SHELL:-sh}}",
-        shell_quote(&terminal.tmux_socket),
-        shell_quote(&terminal.tmux_session),
-    )
-}
-
-fn empty_command(slot: usize) -> String {
-    let message = format!(
-        "slot {}: <empty>\n\nOpen a new STP terminal in VS Code, then run stp panel again.\n",
-        slot.saturating_add(1)
-    );
-    format!("printf %s {}; exec ${{SHELL:-sh}}", shell_quote(&message))
-}
-
-fn install_terminate_binding(tmux: &Tmux, registry_path: &Path) -> anyhow::Result<()> {
-    let binary = std::env::current_exe().context("failed to resolve stp binary path")?;
-    let binding = terminate_binding(&binary, registry_path);
-    tmux.bind_key_args(
-        "K",
-        "confirm-before",
-        &["-p", &binding.prompt, &binding.run_command],
+        .find(|pane| pane.pane_key.starts_with("empty:"))
+        .or_else(|| {
+            panes
+                .iter()
+                .rev()
+                .find(|pane| pane.pane_key != session_sidebar::TITLE)
+        })
+        .context("panel has no content pane available for selection")?;
+    tmux.respawn_pane(
+        &target.pane_id,
+        &session_sidebar::terminal_command(&terminal),
     )?;
+    set_pane_key(&tmux, &target.pane_id, &terminal_id)?;
+    tmux.select_pane(&target.pane_id)?;
     Ok(())
 }
 
-#[derive(Debug)]
-struct TerminateBinding {
-    prompt: String,
-    run_command: String,
-}
-
-fn terminate_binding(binary: &Path, registry_path: &Path) -> TerminateBinding {
-    let terminate_cli = format!(
-        "{} terminate --registry {}",
-        shell_double_quote(&binary.display().to_string()),
-        shell_double_quote(&registry_path.display().to_string()),
-    );
-    let shell_command = format!(
-        "terminal_id=#{{q:pane_title}}; case \"$terminal_id\" in empty:*|\"\") tmux display-message 'No selected STP terminal';; *) {terminate_cli} --terminal-id \"$terminal_id\" --yes;; esac",
-    );
-    TerminateBinding {
-        prompt: "Terminate STP #{pane_title}? (y/n)".to_owned(),
-        run_command: format!("run-shell -b {}", shell_quote(&shell_command)),
-    }
-}
-
-fn shell_quote(value: &str) -> String {
-    format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn shell_double_quote(value: &str) -> String {
-    format!(
-        "\"{}\"",
-        value
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('$', "\\$")
-            .replace('`', "\\`")
-    )
-}
-
-#[cfg(test)]
-#[allow(clippy::expect_used)]
-mod tests {
-    use std::path::PathBuf;
-
-    use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
-    use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
-
-    use super::{pane_commands, pane_titles, terminate_binding};
-    use crate::panel::Layout;
-
-    #[test]
-    fn pane_commands_attach_registered_terminal_sessions() {
-        let registry = Registry {
-            terminals: vec![terminal("00000000-0000-0000-0000-000000000101")],
-        };
-
-        let commands = pane_commands(&registry, Layout::ThreeByThree);
-
-        assert_eq!(commands.len(), 9);
-        assert!(commands[0].contains("env -u TMUX tmux -L 'stp-test-socket'"));
-        assert!(commands[0].contains("attach-session -t 'stp-test-session'"));
-        assert!(commands[1].contains("slot 2: <empty>"));
-    }
-
-    #[test]
-    fn pane_commands_follow_two_by_two_capacity() {
-        let registry = Registry::default();
-
-        let commands = pane_commands(&registry, Layout::TwoByTwo);
-
-        assert_eq!(commands.len(), 4);
-        assert!(commands[3].contains("slot 4: <empty>"));
-    }
-
-    #[test]
-    fn pane_titles_use_terminal_ids_and_empty_slot_titles() {
-        let registry = Registry {
-            terminals: vec![terminal("00000000-0000-0000-0000-000000000101")],
-        };
-
-        let titles = pane_titles(&registry, Layout::TwoByTwo);
-
-        assert_eq!(titles[0], "00000000-0000-0000-0000-000000000101");
-        assert_eq!(titles[1], "empty:2");
-    }
-
-    #[test]
-    fn pane_commands_ignore_exited_terminal_sessions() {
-        let registry = Registry {
-            terminals: vec![
-                terminal_with_status(
-                    "00000000-0000-0000-0000-000000000101",
-                    TerminalStatus::Exited,
-                ),
-                terminal("00000000-0000-0000-0000-000000000102"),
-            ],
-        };
-
-        let commands = pane_commands(&registry, Layout::TwoByTwo);
-        let titles = pane_titles(&registry, Layout::TwoByTwo);
-
-        assert!(commands[0].contains("attach-session -t 'stp-test-session'"));
-        assert!(commands[1].contains("slot 2: <empty>"));
-        assert_eq!(titles[0], "00000000-0000-0000-0000-000000000102");
-        assert_eq!(titles[1], "empty:2");
-    }
-
-    #[test]
-    fn terminate_binding_uses_prefix_safe_cli_command() {
-        let binding = terminate_binding(
-            &PathBuf::from("/opt/stp/bin/stp"),
-            &PathBuf::from("/tmp/registry.json"),
-        );
-
-        assert!(binding.prompt.contains("#{pane_title}"));
-        assert!(binding.run_command.contains("run-shell -b"));
-        assert!(binding.run_command.contains("terminate --registry"));
-        assert!(binding.run_command.contains("/tmp/registry.json"));
-        assert!(
-            binding
-                .run_command
-                .contains(concat!("terminal_id=", "#{q:pane_title}"))
-        );
-        assert!(
-            binding
-                .run_command
-                .contains("--terminal-id \"$terminal_id\" --yes")
-        );
-        assert!(binding.run_command.contains("No selected STP terminal"));
-    }
-
-    fn terminal(id: &str) -> ManagedTerminal {
-        terminal_with_status(id, TerminalStatus::Live)
-    }
-
-    fn terminal_with_status(id: &str, status: TerminalStatus) -> ManagedTerminal {
-        ManagedTerminal {
-            terminal_id: TerminalId::parse(id).expect("terminal id"),
-            workspace_id: WorkspaceId::new("workspace".to_owned()),
-            window_id: WindowId::parse("00000000-0000-0000-0000-000000000001").expect("window id"),
-            workspace_path: PathBuf::from("/tmp/workspace"),
-            repo_root: PathBuf::from("/tmp/workspace"),
-            branch_name: Some("main".to_owned()),
-            tmux_socket: "stp-test-socket".to_owned(),
-            tmux_session: "stp-test-session".to_owned(),
-            tmux_window: "0".to_owned(),
-            created_at: 0,
-            last_seen_at: 0,
-            status,
-        }
-    }
+fn set_pane_key(tmux: &Tmux, pane_id: &str, key: &str) -> anyhow::Result<()> {
+    tmux.set_pane_title(pane_id, key)?;
+    tmux.set_pane_option(pane_id, "@stp-pane-key", key)?;
+    Ok(())
 }

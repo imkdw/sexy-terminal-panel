@@ -28,6 +28,12 @@ fn main() -> Result<()> {
                 panel::run_interactive(&store, layout, &args.state.socket)
             }
         }
+        Command::PanelSelect(args) => {
+            let store = stp_core::registry::RegistryStore::new(state::selected_registry_path(
+                args.state.registry,
+            ));
+            panel::select_from_sidebar(&store, &args.mouse_line, &args.state.socket)
+        }
         Command::OpenCode(args) => commands::open_code(args),
         Command::Terminate(args) => commands::terminate(args),
         Command::QaSendFocused(args) => commands::send_focused(args),

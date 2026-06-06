@@ -39,7 +39,8 @@ fn panel_ignores_live_registry_entries_when_tmux_session_is_missing() {
         .assert()
         .success();
 
-    wait_for_tmux_capture(&socket, "stp-panel", "slot 1: <empty>");
+    wait_for_pane_title(&socket, "empty:1");
+    wait_for_titled_pane_capture(&socket, "empty:1", "slot 1: <empty>");
     assert_eq!(registry_status(&registry, terminal_id), "stale");
     kill_tmux_server(&panel_socket);
     kill_tmux_server(&socket);
@@ -112,15 +113,17 @@ fn panel_attaches_and_controls_registered_terminal_session() {
         ])
         .assert()
         .success();
-    wait_for_tmux_capture(&socket, "stp-panel", "panel-target-ready");
+    wait_for_pane_title(&socket, terminal_id);
+    wait_for_titled_pane_capture(&socket, terminal_id, "panel-target-ready");
 
+    let panel_target = wait_for_pane_title(&socket, terminal_id);
     Command::new("tmux")
         .args([
             "-L",
             &socket,
             "send-keys",
             "-t",
-            "stp-panel:0.0",
+            &panel_target,
             "echo panel-input-routed",
             "Enter",
         ])
@@ -185,6 +188,62 @@ fn wait_for_tmux_capture(socket: &str, session: &str, needle: &str) {
         assert!(
             std::time::Instant::now() < deadline,
             "timed out waiting for tmux capture to contain {needle}; got {capture}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+fn wait_for_titled_pane_capture(socket: &str, title: &str, needle: &str) {
+    let target = wait_for_pane_title(socket, title);
+    wait_for_capture_target(socket, &target, needle);
+}
+
+fn wait_for_capture_target(socket: &str, target: &str, needle: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let output = Command::new("tmux")
+            .args(["-L", socket, "capture-pane", "-pt", target, "-S", "-200"])
+            .output()
+            .expect("capture pane");
+        let capture = String::from_utf8_lossy(&output.stdout);
+        let unwrapped_capture = capture.replace(['\r', '\n'], "");
+        if capture.contains(needle) || unwrapped_capture.contains(needle) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for tmux capture to contain {needle}; got {capture}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+fn wait_for_pane_title(socket: &str, expected_title: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let output = Command::new("tmux")
+            .args([
+                "-L",
+                socket,
+                "list-panes",
+                "-t",
+                "stp-panel",
+                "-F",
+                concat!("#", "{pane_id}\t#", "{@stp-pane-key}"),
+            ])
+            .output()
+            .expect("pane titles");
+        let titles = String::from_utf8_lossy(&output.stdout);
+        for line in titles.lines() {
+            if let Some((pane_id, title)) = line.split_once('\t')
+                && title == expected_title
+            {
+                return pane_id.to_owned();
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for pane title {expected_title}; got {titles}"
         );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
