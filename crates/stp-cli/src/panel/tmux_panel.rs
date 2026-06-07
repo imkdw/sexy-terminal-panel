@@ -5,7 +5,7 @@ use stp_tmux::adapter::Tmux;
 use super::Layout;
 #[cfg(test)]
 pub(super) use super::bindings::terminate_binding;
-use super::bindings::{install_mouse_binding, install_terminate_binding};
+use super::bindings::{install_mouse_binding, install_quit_binding, install_terminate_binding};
 use super::layout;
 #[cfg(test)]
 pub(super) use super::layout::{pane_commands, pane_titles};
@@ -41,6 +41,7 @@ pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow
         .clone();
     set_pane_key(&tmux, &sidebar_pane, session_sidebar::TITLE)?;
     install_mouse_binding(&tmux, store.path(), panel_socket)?;
+    install_quit_binding(&tmux)?;
     install_terminate_binding(&tmux, store.path(), panel_socket)?;
     let first_command = commands.first().context("panel layout has no panes")?;
     let first_content_pane = tmux.split_window_right_with_id(&sidebar_pane, first_command)?;

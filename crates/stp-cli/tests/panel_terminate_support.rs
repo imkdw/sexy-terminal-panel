@@ -67,15 +67,38 @@ pub fn launch_panel(
 }
 
 pub fn send_prefix_k(socket: &str, session: &str) {
+    send_prefix_key(socket, session, "K");
+    wait_for_capture_text(socket, session, "Terminate selected STP pane? (y/n)");
+}
+
+pub fn send_prefix_key(socket: &str, session: &str, key: &str) {
     Command::new("tmux")
         .args(["-L", socket, "send-prefix", "-t", session])
         .assert()
         .success();
     Command::new("tmux")
-        .args(["-L", socket, "send-keys", "-t", session, "K"])
+        .args(["-L", socket, "send-keys", "-t", session, key])
         .assert()
         .success();
-    std::thread::sleep(std::time::Duration::from_millis(150));
+}
+
+fn wait_for_capture_text(socket: &str, session: &str, needle: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let output = ProcessCommand::new("tmux")
+            .args(["-L", socket, "capture-pane", "-pt", session, "-S", "-5"])
+            .output()
+            .expect("capture pane");
+        let capture = String::from_utf8_lossy(&output.stdout);
+        if capture.contains(needle) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for capture to contain {needle}; got {capture}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
 pub fn assert_tmux_session_exists(socket: &str, session: &str) {
@@ -85,14 +108,35 @@ pub fn assert_tmux_session_exists(socket: &str, session: &str) {
         .success();
 }
 
+pub fn tmux_session_exists(socket: &str, session: &str) -> bool {
+    ProcessCommand::new("tmux")
+        .args(["-L", socket, "has-session", "-t", session])
+        .status()
+        .expect("has session")
+        .success()
+}
+
+pub fn wait_for_any_missing_tmux_session(socket: &str, sessions: &[String]) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        if let Some(session) = sessions
+            .iter()
+            .find(|session| !tmux_session_exists(socket, session))
+        {
+            return session.clone();
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for one tmux session to terminate: {sessions:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
 pub fn wait_for_missing_tmux_session(socket: &str, session: &str) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     loop {
-        let status = ProcessCommand::new("tmux")
-            .args(["-L", socket, "has-session", "-t", session])
-            .status()
-            .expect("has session");
-        if !status.success() {
+        if !tmux_session_exists(socket, session) {
             return;
         }
         assert!(

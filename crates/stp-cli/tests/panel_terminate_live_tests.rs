@@ -8,11 +8,12 @@ mod panel_terminate_support;
 
 use panel_terminate_support::{
     assert_tmux_session_exists, kill_tmux_server, launch_panel, register_detached_terminal,
-    send_prefix_k, wait_for_missing_tmux_session, wait_for_pane_title,
+    send_prefix_k, send_prefix_key, wait_for_active_pane_key, wait_for_any_missing_tmux_session,
+    wait_for_missing_tmux_session, wait_for_pane_title,
 };
 
 #[test]
-fn panel_prefix_k_terminates_only_active_managed_session() {
+fn panel_prefix_k_terminates_one_focused_managed_session() {
     let temp = TempDir::new().expect("temp dir");
     let workspace_a = temp.path().join("worktree-panel-k-a");
     let workspace_b = temp.path().join("worktree-panel-k-b");
@@ -32,28 +33,23 @@ fn panel_prefix_k_terminates_only_active_managed_session() {
     register_detached_terminal(&registry, &workspace_b, &socket, terminal_b);
     launch_panel(&panel_socket, panel_session, &socket, &binary, &registry);
     wait_for_pane_title(&socket, terminal_a);
-    let terminal_b_pane = wait_for_pane_title(&socket, terminal_b);
+    wait_for_pane_title(&socket, terminal_b);
 
+    send_prefix_k(&panel_socket, panel_session);
     Command::new("tmux")
-        .args(["-L", &socket, "select-pane", "-t", &terminal_b_pane])
+        .args(["-L", &panel_socket, "send-keys", "-t", panel_session, "y"])
         .assert()
         .success();
-    send_prefix_k(&socket, "stp-panel");
-    Command::cargo_bin("stp")
-        .expect("stp binary")
-        .args([
-            "terminate",
-            "--registry",
-            registry.to_str().expect("utf8 registry"),
-            "--terminal-id",
-            terminal_b,
-            "--yes",
-        ])
-        .assert()
-        .success();
-    wait_for_missing_tmux_session(&socket, &format!("stp-{terminal_b}"));
-
-    assert_tmux_session_exists(&socket, &format!("stp-{terminal_a}"));
+    let session_a = format!("stp-{terminal_a}");
+    let session_b = format!("stp-{terminal_b}");
+    let terminated =
+        wait_for_any_missing_tmux_session(&socket, &[session_a.clone(), session_b.clone()]);
+    let remaining = if terminated == session_a {
+        session_b
+    } else {
+        session_a
+    };
+    assert_tmux_session_exists(&socket, &remaining);
     kill_tmux_server(&panel_socket);
     kill_tmux_server(&socket);
 }
@@ -76,7 +72,7 @@ fn panel_prefix_k_decline_preserves_session() {
     launch_panel(&panel_socket, panel_session, &socket, &binary, &registry);
     wait_for_pane_title(&socket, terminal_id);
 
-    send_prefix_k(&socket, "stp-panel");
+    send_prefix_k(&panel_socket, panel_session);
     Command::new("tmux")
         .args(["-L", &panel_socket, "send-keys", "-t", panel_session, "n"])
         .assert()
@@ -104,13 +100,12 @@ fn panel_prefix_k_on_empty_pane_is_noop() {
     kill_tmux_server(&panel_socket);
     register_detached_terminal(&registry, &workspace, &socket, terminal_id);
     launch_panel(&panel_socket, panel_session, &socket, &binary, &registry);
-    let empty_pane = wait_for_pane_title(&socket, "empty:2");
+    wait_for_pane_title(&socket, "empty:2");
 
-    Command::new("tmux")
-        .args(["-L", &socket, "select-pane", "-t", &empty_pane])
-        .assert()
-        .success();
-    send_prefix_k(&socket, "stp-panel");
+    send_prefix_key(&panel_socket, panel_session, "Right");
+    wait_for_active_pane_key(&socket, "empty:2");
+    send_prefix_key(&panel_socket, panel_session, "K");
+    std::thread::sleep(std::time::Duration::from_millis(300));
     Command::new("tmux")
         .args(["-L", &panel_socket, "send-keys", "-t", panel_session, "y"])
         .assert()
@@ -138,13 +133,12 @@ fn panel_prefix_k_on_sidebar_is_noop() {
     kill_tmux_server(&panel_socket);
     register_detached_terminal(&registry, &workspace, &socket, terminal_id);
     launch_panel(&panel_socket, panel_session, &socket, &binary, &registry);
-    let sidebar_pane = wait_for_pane_title(&socket, "stp-sidebar");
+    wait_for_pane_title(&socket, "stp-sidebar");
 
-    Command::new("tmux")
-        .args(["-L", &socket, "select-pane", "-t", &sidebar_pane])
-        .assert()
-        .success();
-    send_prefix_k(&socket, "stp-panel");
+    send_prefix_key(&panel_socket, panel_session, "Left");
+    wait_for_active_pane_key(&socket, "stp-sidebar");
+    send_prefix_key(&panel_socket, panel_session, "K");
+    std::thread::sleep(std::time::Duration::from_millis(300));
     Command::new("tmux")
         .args(["-L", &panel_socket, "send-keys", "-t", panel_session, "y"])
         .assert()

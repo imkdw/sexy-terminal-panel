@@ -12,6 +12,12 @@ pub(super) struct TerminateBinding {
     pub(super) run_command: String,
 }
 
+pub(super) fn install_quit_binding(tmux: &Tmux) -> anyhow::Result<()> {
+    let command = BindingCommand::new("detach-client");
+    tmux.bind_key_in_table("root", "q", &command)?;
+    Ok(())
+}
+
 pub(super) fn install_terminate_binding(
     tmux: &Tmux,
     registry_path: &Path,
@@ -61,6 +67,6 @@ pub(super) fn terminate_binding(
     );
     TerminateBinding {
         prompt: "Terminate selected STP pane? (y/n)".to_owned(),
-        run_command: format!("run-shell -b -F {}", shell::quote(&shell_command)),
+        run_command: format!("run-shell -b {}", shell::quote(&shell_command)),
     }
 }

@@ -4,8 +4,10 @@ use std::path::PathBuf;
 
 use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
 use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
+use stp_tmux::adapter::Tmux;
 
 use super::Layout;
+use super::bindings::install_quit_binding;
 use super::tmux_panel::{pane_commands, pane_titles, terminate_binding};
 
 #[test]
@@ -74,7 +76,8 @@ fn terminate_binding_uses_prefix_safe_cli_command() {
     );
 
     assert!(binding.prompt.contains("selected STP pane"));
-    assert!(binding.run_command.contains("run-shell -b -F"));
+    assert!(binding.run_command.contains("run-shell -b"));
+    assert!(!binding.run_command.contains("run-shell -b -F"));
     assert!(binding.run_command.contains("terminate --registry"));
     assert!(binding.run_command.contains("/tmp/registry.json"));
     assert!(
@@ -92,6 +95,31 @@ fn terminate_binding_uses_prefix_safe_cli_command() {
     );
     assert!(binding.run_command.contains("No selected STP terminal"));
     assert!(binding.run_command.contains("stp-sidebar"));
+}
+
+#[test]
+fn quit_binding_maps_raw_q_to_detach_client() {
+    let tmux = Tmux::new("stp-cli-quit-binding-test");
+    tmux.kill_server().ok();
+    tmux.new_session("stp-panel", "sh").expect("new session");
+
+    install_quit_binding(&tmux).expect("quit binding");
+
+    let output = std::process::Command::new("tmux")
+        .args([
+            "-L",
+            "stp-cli-quit-binding-test",
+            "list-keys",
+            "-T",
+            "root",
+            "q",
+        ])
+        .output()
+        .expect("list keys");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    tmux.kill_server().expect("cleanup server");
+
+    assert!(stdout.contains("bind-key -T root q detach-client"));
 }
 
 fn terminal(id: &str) -> ManagedTerminal {

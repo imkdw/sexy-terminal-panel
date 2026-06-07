@@ -58,6 +58,41 @@ fn panel_creates_left_sidebar_and_right_grid() {
     kill_tmux_server(&socket);
 }
 
+#[test]
+fn panel_raw_q_detaches_panel_client_instead_of_reaching_terminal() {
+    let temp = TempDir::new().expect("temp dir");
+    let workspace = temp.path().join("worktree-quit-panel");
+    std::fs::create_dir(&workspace).expect("workspace");
+    let registry = temp.path().join("registry.json");
+    let binary = cargo_bin("stp");
+    let socket = format!("stp-cli-quit-panel-test-{}", std::process::id());
+    let panel_socket = format!("stp-cli-quit-panel-outer-{}", std::process::id());
+    let panel_session = "stp-cli-quit-panel-wrapper";
+    let terminal_id = "00000000-0000-0000-0000-000000000108";
+
+    kill_tmux_server(&socket);
+    kill_tmux_server(&panel_socket);
+    register_detached_terminal(&registry, &workspace, &socket, terminal_id);
+    launch_wrapped_panel(
+        &panel_socket,
+        panel_session,
+        &socket,
+        &binary,
+        &registry,
+        "2x2",
+    );
+    wait_for_layout_panes(&socket, 5);
+
+    Command::new("tmux")
+        .args(["-L", &panel_socket, "send-keys", "-t", panel_session, "q"])
+        .assert()
+        .success();
+
+    wait_for_panel_client_count(&socket, 0);
+    kill_tmux_server(&panel_socket);
+    kill_tmux_server(&socket);
+}
+
 fn assert_content_panes(
     layout: &str,
     terminal_id: &str,
@@ -119,6 +154,34 @@ fn assert_content_panes(
     assert_spread_at_most_one(&column_widths, layout, "right-grid column widths");
 }
 
+fn launch_wrapped_panel(
+    panel_socket: &str,
+    panel_session: &str,
+    managed_socket: &str,
+    binary: &std::path::Path,
+    registry: &std::path::Path,
+    layout: &str,
+) {
+    Command::new("tmux")
+        .args([
+            "-L",
+            panel_socket,
+            "new-session",
+            "-d",
+            "-s",
+            panel_session,
+            &format!(
+                "STP_TMUX_SOCKET={} {} panel --registry {} --layout {}",
+                shell_quote(managed_socket),
+                shell_quote(&binary.display().to_string()),
+                shell_quote(&registry.display().to_string()),
+                shell_quote(layout),
+            ),
+        ])
+        .assert()
+        .success();
+}
+
 fn register_detached_terminal(
     registry: &std::path::Path,
     workspace: &std::path::Path,
@@ -170,6 +233,36 @@ fn wait_for_layout_panes(socket: &str, expected_count: usize) -> Vec<PanelPane> 
         assert!(
             std::time::Instant::now() < deadline,
             "timed out waiting for {expected_count} layout panes; got {panes:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+fn wait_for_panel_client_count(socket: &str, expected_count: usize) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        let output = Command::new("tmux")
+            .args([
+                "-L",
+                socket,
+                "display-message",
+                "-p",
+                "-t",
+                "stp-panel",
+                "#{session_attached}",
+            ])
+            .output()
+            .expect("panel attached count");
+        let count = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<usize>()
+            .ok();
+        if count == Some(expected_count) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for panel client count {expected_count}; got {count:?}"
         );
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
