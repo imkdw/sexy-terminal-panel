@@ -8,7 +8,7 @@ use stp_core::registry::{ManagedTerminal, RegistryStore, TerminalStatus};
 use stp_tmux::adapter::Tmux;
 
 use crate::cli::{
-    CaptureArgs, CleanupZombiesArgs, DoctorArgs, OpenCodeArgs, RemoveStaleArgs, TerminalArgs,
+    CaptureArgs, CleanupZombiesArgs, DoctorArgs, OpenCursorArgs, RemoveStaleArgs, TerminalArgs,
     TerminateArgs,
 };
 use crate::output::{stdout_line, stdout_text};
@@ -67,7 +67,7 @@ pub fn capture(args: CaptureArgs) -> Result<()> {
     Ok(())
 }
 
-pub fn open_code(args: OpenCodeArgs) -> Result<()> {
+pub fn open_cursor(args: OpenCursorArgs) -> Result<()> {
     let terminal_id = TerminalId::parse(&args.terminal_id)?;
     let store = RegistryStore::new(selected_registry_path(args.registry));
     let registry = store.load()?;
@@ -75,21 +75,24 @@ pub fn open_code(args: OpenCodeArgs) -> Result<()> {
         .terminal(&terminal_id)
         .ok_or_else(|| anyhow!("terminal not found: {terminal_id}"))?;
     let command = format!(
-        "code --new-window {}",
+        "cursor --new-window {}",
         shell_quote(&terminal.workspace_path)
     );
-    if args.dry_run || std::env::var("STP_OPEN_CODE_DRY_RUN").is_ok() {
+    if args.dry_run || std::env::var("STP_OPEN_CURSOR_DRY_RUN").is_ok() {
         write_optional_log(args.log.as_deref(), &command)?;
         stdout_line(&format!("fallback command: {command}"))?;
         return Ok(());
     }
-    let status = ProcessCommand::new("code")
+    let status = ProcessCommand::new("cursor")
         .arg("--new-window")
         .arg(&terminal.workspace_path)
         .status()
-        .context("code CLI not found")?;
+        .context("cursor CLI not found")?;
     if !status.success() {
-        bail!("code CLI failed for {}", terminal.workspace_path.display());
+        bail!(
+            "cursor CLI failed for {}",
+            terminal.workspace_path.display()
+        );
     }
     Ok(())
 }
@@ -152,7 +155,7 @@ pub fn cleanup_zombies(args: CleanupZombiesArgs) -> Result<()> {
 
 pub fn doctor(args: DoctorArgs) -> Result<()> {
     check_command("tmux", &["-V"], "tmux not found")?;
-    check_command("code", &["--version"], "code CLI not found")?;
+    check_command("cursor", &["--version"], "cursor CLI not found")?;
     let path = selected_registry_path(args.registry);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("registry directory is inaccessible")?;

@@ -156,6 +156,57 @@ fn send_focused_routes_to_registered_socket() {
 }
 
 #[test]
+fn open_cursor_prints_cursor_fallback_when_dry_run() {
+    let temp = TempDir::new().expect("temp dir");
+    let workspace = temp.path().join("worktree-cursor");
+    std::fs::create_dir(&workspace).expect("workspace");
+    let registry = temp.path().join("registry.json");
+    let socket = format!("stp-cli-open-cursor-test-{}", std::process::id());
+    let terminal_id = "00000000-0000-0000-0000-000000000105";
+
+    let _ = Command::new("tmux")
+        .args(["-L", &socket, "kill-server"])
+        .ok();
+    Command::cargo_bin("stp")
+        .expect("stp binary")
+        .args([
+            "terminal",
+            "--workspace",
+            workspace.to_str().expect("utf8 workspace"),
+            "--window-id",
+            "00000000-0000-0000-0000-000000000001",
+            "--terminal-id",
+            terminal_id,
+            "--socket",
+            &socket,
+            "--registry",
+            registry.to_str().expect("utf8 registry"),
+            "--detach",
+        ])
+        .assert()
+        .success();
+
+    Command::cargo_bin("stp")
+        .expect("stp binary")
+        .args([
+            "open-cursor",
+            "--registry",
+            registry.to_str().expect("utf8 registry"),
+            "--terminal-id",
+            terminal_id,
+            "--dry-run",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("cursor --new-window"))
+        .stdout(predicate::str::contains("worktree-cursor"));
+
+    let _ = Command::new("tmux")
+        .args(["-L", &socket, "kill-server"])
+        .ok();
+}
+
+#[test]
 fn terminal_attaches_when_launched_from_pty() {
     let temp = TempDir::new().expect("temp dir");
     let workspace = temp.path().join("worktree-pty");

@@ -1,13 +1,13 @@
 # Sexy Terminal Panel
 
-Sexy Terminal Panel is a macOS-first local tool for keeping VS Code worktree terminals in tmux and managing them from one native terminal panel.
+Sexy Terminal Panel is a macOS-first local tool for keeping Cursor worktree terminals in tmux and managing them from one native terminal panel.
 
 ## MVP Scope
 
 - `stp terminal` registers a workspace terminal and starts or attaches a tmux session.
 - `stp panel` shows a native left session list next to the right content grid
   of managed terminal panes.
-- The VS Code extension adds an Explorer `STP Terminals` view that lists tracked
+- The Cursor extension adds an Explorer `STP Terminals` view that lists tracked
   STP integrated terminals and live registry sessions.
 - Clicking an `STP Terminals` item shows the matching integrated terminal or
   opens one that attaches to the selected registry session.
@@ -21,7 +21,7 @@ Sexy Terminal Panel is a macOS-first local tool for keeping VS Code worktree ter
   right pane, or replaces the rightmost content pane when the grid is full.
 - `h/j/k/l`, arrows, and `Tab` move panel focus.
 - `stp qa-send-focused` and panel actions route by terminal id, not visual index.
-- `stp open-code` opens the registered workspace through `code --new-window` or records the deterministic fallback in dry-run mode.
+- `stp open-cursor` opens the registered workspace through `cursor --new-window` or records the deterministic fallback in dry-run mode.
 - Browser/xterm.js terminal control is intentionally not part of the MVP.
 
 ## Install
@@ -38,14 +38,14 @@ Install to a custom prefix:
 scripts/install-local.sh --prefix "$HOME/.local"
 ```
 
-The VS Code extension contributes the `STP: tmux` terminal profile and sets it
+The Cursor extension contributes the `STP: tmux` terminal profile and sets it
 as the default integrated terminal profile on macOS. It runs:
 
 ```text
 stp terminal --workspace <path> --window-id <id> --terminal-id <id>
 ```
 
-If VS Code cannot find `stp` when launched outside a shell, set:
+If Cursor cannot find `stp` when launched outside a shell, set:
 
 ```json
 "stp.binaryPath": "/absolute/path/to/stp"
@@ -68,7 +68,7 @@ Registry path:
 ${XDG_STATE_HOME:-~/.local/state}/sexy-terminal-panel/registry.json
 ```
 
-Set `stp.registryPath` when VS Code should use a non-default registry file.
+Set `stp.registryPath` when Cursor should use a non-default registry file.
 
 Managed tmux socket default:
 
@@ -86,7 +86,7 @@ stp-managed
 - `Tab`: next cell
 - `prefix K`: confirm and terminate the selected managed terminal from
   `stp panel`
-- VS Code `cmd+shift+backspace`: terminate the focused tracked STP terminal
+- Cursor `cmd+shift+backspace`: terminate the focused tracked STP terminal
 
 The native panel uses `prefix K`, not raw `K`, so uppercase input still reaches
 attached terminals.
@@ -96,7 +96,7 @@ attached terminals.
 ```sh
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
-cd extensions/vscode && bun test && bunx tsc --noEmit
+cd extensions/cursor && bun test && bunx tsc --noEmit
 scripts/qa/e2e-local.sh
 scripts/qa/edge-cases.sh
 scripts/qa/release-gate.sh

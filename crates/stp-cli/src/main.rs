@@ -34,7 +34,7 @@ fn main() -> Result<()> {
             ));
             panel::select_from_sidebar(&store, &args.mouse_line, &args.state.socket)
         }
-        Command::OpenCode(args) => commands::open_code(args),
+        Command::OpenCursor(args) => commands::open_cursor(args),
         Command::Terminate(args) => commands::terminate(args),
         Command::QaSendFocused(args) => commands::send_focused(args),
         Command::QaCapture(args) => commands::capture(args),

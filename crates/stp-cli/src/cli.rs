@@ -15,7 +15,7 @@ pub enum Command {
     Panel(PanelArgs),
     #[command(hide = true)]
     PanelSelect(PanelSelectArgs),
-    OpenCode(OpenCodeArgs),
+    OpenCursor(OpenCursorArgs),
     Terminate(TerminateArgs),
     QaSendFocused(SendFocusedArgs),
     QaCapture(CaptureArgs),
@@ -66,7 +66,7 @@ pub struct PanelSelectArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct OpenCodeArgs {
+pub struct OpenCursorArgs {
     #[arg(long, env = "STP_REGISTRY")]
     pub registry: Option<PathBuf>,
     #[arg(long)]

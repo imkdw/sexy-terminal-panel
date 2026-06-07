@@ -11,7 +11,7 @@ while IFS= read -r file; do
     printf 'LOC FAIL %s %s\n' "$file" "$lines"
     status=1
   fi
-done < <(find crates extensions/vscode/src extensions/vscode/tests -type f \( -name '*.rs' -o -name '*.ts' \) | sort)
+done < <(find crates extensions/cursor/src extensions/cursor/tests -type f \( -name '*.rs' -o -name '*.ts' \) | sort)
 
 if [ "$status" -ne 0 ]; then
   exit "$status"

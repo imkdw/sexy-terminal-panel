@@ -24,7 +24,7 @@ cargo test -p stp-tmux missing_target_returns_error_when_session_absent -- --noc
 cargo test -p stp panel_sidebar_click_on_header_is_noop -- --nocapture | tee "$EVIDENCE/edge-invalid-click.txt"
 cp "$EVIDENCE/C003-edge-missing-target.txt" "$EVIDENCE/edge-missing-session.txt"
 
-if ./target/debug/stp open-code --registry "$TMP_DIR/registry.json" --terminal-id 00000000-0000-0000-0000-000000009999 > "$EVIDENCE/C003-edge-missing-terminal.txt" 2>&1; then
+if ./target/debug/stp open-cursor --registry "$TMP_DIR/registry.json" --terminal-id 00000000-0000-0000-0000-000000009999 > "$EVIDENCE/C003-edge-missing-terminal.txt" 2>&1; then
   printf 'missing terminal unexpectedly succeeded\n' >&2
   exit 1
 fi

@@ -1,4 +1,4 @@
 .omo
 target/
 node_modules/
-extensions/vscode/node_modules/
+extensions/cursor/node_modules/

@@ -22,15 +22,15 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if ! command -v code >/dev/null 2>&1; then
-  printf 'code CLI not found\n' >&2
+if ! command -v cursor >/dev/null 2>&1; then
+  printf 'cursor CLI not found\n' >&2
   exit 1
 fi
 
 printf 'build binary: cargo build --release -p stp\n'
 printf 'install binary: %s/bin/stp\n' "$PREFIX"
-printf 'package VSIX: cd extensions/vscode && bun run package-vsix\n'
-printf 'VS Code install command: code --install-extension sexy-terminal-panel-vscode-0.1.0.vsix\n'
+printf 'package VSIX: cd extensions/cursor && bun run package-vsix\n'
+printf 'Cursor install command: cursor --install-extension sexy-terminal-panel-cursor-0.1.0.vsix\n'
 
 if [ "$DRY_RUN" -eq 1 ]; then
   exit 0
@@ -43,5 +43,5 @@ TMP_BIN="$(mktemp "$PREFIX/bin/stp.XXXXXX")"
 cp target/release/stp "$TMP_BIN"
 chmod 755 "$TMP_BIN"
 mv -f "$TMP_BIN" "$PREFIX/bin/stp"
-(cd extensions/vscode && bun run package-vsix)
-code --install-extension "$ROOT/extensions/vscode/sexy-terminal-panel-vscode-0.1.0.vsix"
+(cd extensions/cursor && bun run package-vsix)
+cursor --install-extension "$ROOT/extensions/cursor/sexy-terminal-panel-cursor-0.1.0.vsix"
