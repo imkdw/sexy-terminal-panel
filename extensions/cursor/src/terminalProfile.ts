@@ -1,11 +1,11 @@
-export type TerminalProfileInput = Readonly<{
-  binaryPath: string
+export type RegularTerminalOptions = Readonly<{
+  name: string
+  cwd: string
+}>
+
+export type RegularTerminalInput = Readonly<{
+  name: string
   workspacePath: string
-  windowId: string
-  terminalId: string
-  tmuxSocket: string
-  registryPath?: string
-  shellPath?: string
 }>
 
 export type WorkspaceCandidate = Readonly<{
@@ -29,26 +29,13 @@ export class NoWorkspaceError extends Error {
   }
 }
 
-export function buildTerminalArgs(input: TerminalProfileInput): readonly string[] {
-  const args = [
-    input.binaryPath,
-    "terminal",
-    "--workspace",
-    input.workspacePath,
-    "--window-id",
-    input.windowId,
-    "--terminal-id",
-    input.terminalId,
-    "--socket",
-    input.tmuxSocket,
-  ]
-  if (input.registryPath !== undefined && input.registryPath.length > 0) {
-    args.push("--registry", input.registryPath)
+export function buildRegularTerminalOptions(
+  input: RegularTerminalInput,
+): RegularTerminalOptions {
+  return {
+    name: input.name,
+    cwd: input.workspacePath,
   }
-  if (input.shellPath !== undefined && input.shellPath.length > 0) {
-    return [...args, "--shell", input.shellPath]
-  }
-  return args
 }
 
 export function selectWorkspacePath(workspaces: readonly WorkspaceCandidate[]): string {

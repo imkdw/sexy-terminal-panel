@@ -63,6 +63,13 @@ export async function terminateCurrentTerminal<TTerminal extends TerminalControl
     return { kind: "untracked" }
   }
 
+  if (!usesRegistryCommand(session)) {
+    input.store.removeTerminal(activeTerminal)
+    activeTerminal.dispose()
+    input.refresh()
+    return { kind: "terminated", terminalId: session.terminalId }
+  }
+
   const binaryPath = session.binaryPath ?? input.binaryPath
   const result = await input.runner.run(
     binaryPath,
@@ -84,6 +91,10 @@ export async function detachClosedTerminal<TTerminal>(input: {
   readonly runner: CommandRunner
   readonly session: TerminalSession<TTerminal>
 }): Promise<DetachResult> {
+  if (!usesRegistryCommand(input.session)) {
+    return { kind: "detached", terminalId: input.session.terminalId }
+  }
+
   const binaryPath = input.session.binaryPath ?? input.binaryPath
   const result = await input.runner.run(
     binaryPath,
@@ -134,4 +145,8 @@ export function buildDetachArgs(
 
 export function buildCleanupZombiesArgs(registryPath: string): readonly string[] {
   return ["registry", "cleanup-zombies", "--registry", registryPath, "--yes"]
+}
+
+function usesRegistryCommand<TTerminal>(session: TerminalSession<TTerminal>): boolean {
+  return session.registryPath !== undefined && session.registryPath.length > 0
 }

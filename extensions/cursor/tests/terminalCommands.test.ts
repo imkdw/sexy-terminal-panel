@@ -76,6 +76,42 @@ describe("terminalCommands", () => {
     expect(messages.errors).toEqual([])
   })
 
+  test("terminates regular tracked active terminal without running the CLI", async () => {
+    const store = new TerminalSessionStore<FakeTerminal>()
+    const terminal = new FakeTerminal("terminal-a")
+    store.trackOpenedSession({
+      terminalId: "00000000-0000-0000-0000-000000000101",
+      name: "STP: worktree-a 00000000",
+      workspacePath: "/tmp/worktree-a",
+      terminal,
+    })
+    const runner = new RecordingRunner({ kind: "failure", message: "should not run" })
+    const messages = new RecordingMessages()
+    let refreshCount = 0
+
+    const result = await terminateCurrentTerminal({
+      activeTerminal: terminal,
+      binaryPath: "stp",
+      messages,
+      refresh: () => {
+        refreshCount += 1
+      },
+      runner,
+      store,
+    })
+
+    expect(result).toEqual({
+      kind: "terminated",
+      terminalId: "00000000-0000-0000-0000-000000000101",
+    })
+    expect(runner.calls).toEqual([])
+    expect(terminal.disposeCount).toBe(1)
+    expect(store.sessionForTerminal(terminal)).toBeUndefined()
+    expect(refreshCount).toBe(1)
+    expect(messages.information).toEqual([])
+    expect(messages.errors).toEqual([])
+  })
+
   test("does not dispose tracked terminal when CLI terminate fails", async () => {
     const store = new TerminalSessionStore<FakeTerminal>()
     const terminal = new FakeTerminal("terminal-a")
@@ -83,6 +119,7 @@ describe("terminalCommands", () => {
       terminalId: "00000000-0000-0000-0000-000000000101",
       name: "STP: worktree-a 00000000",
       workspacePath: "/tmp/worktree-a",
+      registryPath: "/tmp/stp-registry.json",
       terminal,
     })
     const runner = new RecordingRunner({ kind: "failure", message: "tmux command failed" })
@@ -194,6 +231,29 @@ describe("terminalCommands", () => {
         ],
       },
     ])
+    expect(terminal.disposeCount).toBe(0)
+  })
+
+  test("marks a closed regular tracked terminal detached without running the CLI", async () => {
+    const terminal = new FakeTerminal("terminal-a")
+    const runner = new RecordingRunner({ kind: "failure", message: "should not run" })
+
+    const result = await detachClosedTerminal({
+      binaryPath: "/opt/stp/bin/stp",
+      runner,
+      session: {
+        terminalId: "00000000-0000-0000-0000-000000000101",
+        name: "STP: worktree-a 00000000",
+        workspacePath: "/tmp/worktree-a",
+        terminal,
+      },
+    })
+
+    expect(result).toEqual({
+      kind: "detached",
+      terminalId: "00000000-0000-0000-0000-000000000101",
+    })
+    expect(runner.calls).toEqual([])
     expect(terminal.disposeCount).toBe(0)
   })
 

@@ -15,7 +15,7 @@
     "vscode": "^1.105.0"
   },
   "activationEvents": [
-    "onTerminalProfile:stp.tmuxTerminal",
+    "onTerminalProfile:stp.terminal",
     "onView:stp.terminals",
     "onCommand:stp.newTerminal",
     "onCommand:stp.showTerminal",
@@ -66,13 +66,13 @@
     "terminal": {
       "profiles": [
         {
-          "id": "stp.tmuxTerminal",
-          "title": "STP: tmux"
+          "id": "stp.terminal",
+          "title": "STP"
         }
       ]
     },
     "configurationDefaults": {
-      "terminal.integrated.defaultProfile.osx": "STP: tmux"
+      "terminal.integrated.defaultProfile.osx": "STP"
     },
     "configuration": {
       "title": "Sexy Terminal Panel",
@@ -87,7 +87,7 @@
           "type": "string",
           "scope": "machine",
           "default": "stp-managed",
-          "description": "tmux socket name used for STP terminal sessions."
+          "description": "Legacy tmux socket name used for STP registry and panel commands."
         },
         "stp.registryPath": {
           "type": "string",

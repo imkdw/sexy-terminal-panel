@@ -13,7 +13,7 @@ import { createStpTerminalProfile } from "./stpTerminalProfile"
 import { TerminalSessionStore, type TerminalSession } from "./terminalSessions"
 import { StpTerminalTreeProvider, type StpTerminalTreeItem } from "./terminalTree"
 
-const PROFILE_ID = "stp.tmuxTerminal"
+const PROFILE_ID = "stp.terminal"
 const SESSIONS_VIEW_ID = "stp.terminals"
 const NEW_TERMINAL_COMMAND = "stp.newTerminal"
 const SHOW_TERMINAL_COMMAND = "stp.showTerminal"
@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
   )
   const provider: vscode.TerminalProfileProvider = {
     async provideTerminalProfile() {
-      const { profile } = await createStpTerminalProfile(context, sessions)
+      const { profile } = await createStpTerminalProfile(sessions)
       return profile
     },
   }
@@ -34,7 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTerminalProfileProvider(PROFILE_ID, provider),
     vscode.window.registerTreeDataProvider(SESSIONS_VIEW_ID, treeProvider),
     vscode.commands.registerCommand(NEW_TERMINAL_COMMAND, async () => {
-      const { pending, profile } = await createStpTerminalProfile(context, sessions)
+      const { pending, profile } = await createStpTerminalProfile(sessions)
       const terminal = vscode.window.createTerminal(profile.options)
       const session = sessions.attachOpenedTerminal({
         initialName: pending.name,
@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       SHOW_TERMINAL_COMMAND,
       (item: StpTerminalTreeItem<vscode.Terminal> | undefined) => {
-        return showStpTerminalTreeItem(context, sessions, treeProvider, item)
+        return showStpTerminalTreeItem(sessions, treeProvider, item)
       },
     ),
     vscode.commands.registerCommand(TERMINATE_CURRENT_TERMINAL_COMMAND, () => {
@@ -107,7 +107,6 @@ function terminateCurrentStpTerminal(
 }
 
 async function showStpTerminalTreeItem(
-  context: vscode.ExtensionContext,
   sessions: TerminalSessionStore<vscode.Terminal>,
   treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
   item: StpTerminalTreeItem<vscode.Terminal> | undefined,
@@ -124,7 +123,7 @@ async function showStpTerminalTreeItem(
     showTrackedTerminal(openedSession)
     return
   }
-  const { pending, profile } = await createStpTerminalProfile(context, sessions, {
+  const { pending, profile } = await createStpTerminalProfile(sessions, {
     ...item.session,
     binaryPath: currentBinaryPath(),
     registryPath: currentRegistryPath(),

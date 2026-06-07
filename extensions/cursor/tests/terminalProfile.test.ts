@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import packageJson from "../package.json"
 import {
-  buildTerminalArgs,
+  buildRegularTerminalOptions,
   selectBinaryPath,
   selectTmuxSocket,
   selectWorkspacePath,
@@ -9,46 +9,29 @@ import {
 import { selectRegistryPath } from "../src/stpRegistry"
 
 describe("terminalProfile", () => {
-  test("builds stp terminal args when workspace is available", () => {
-    const args = buildTerminalArgs({
-      binaryPath: "/opt/stp/bin/stp",
+  test("builds regular terminal options when workspace is available", () => {
+    const options = buildRegularTerminalOptions({
+      name: "STP: worktree-a 00000000",
       workspacePath: "/tmp/worktree-a",
-      windowId: "00000000-0000-0000-0000-000000000001",
-      terminalId: "00000000-0000-0000-0000-000000000101",
-      tmuxSocket: "stp-workspace-a",
-      registryPath: "/tmp/stp-registry.json",
-      shellPath: "zsh",
     })
 
-    expect(args).toEqual([
-      "/opt/stp/bin/stp",
-      "terminal",
-      "--workspace",
-      "/tmp/worktree-a",
-      "--window-id",
-      "00000000-0000-0000-0000-000000000001",
-      "--terminal-id",
-      "00000000-0000-0000-0000-000000000101",
-      "--socket",
-      "stp-workspace-a",
-      "--registry",
-      "/tmp/stp-registry.json",
-      "--shell",
-      "zsh",
-    ])
+    expect(options).toEqual({
+      name: "STP: worktree-a 00000000",
+      cwd: "/tmp/worktree-a",
+    })
   })
 
-  test("contributes STP tmux terminal profile", () => {
+  test("contributes STP regular terminal profile", () => {
     expect(packageJson.extensionKind).toEqual(["ui"])
     expect(packageJson.contributes.terminal.profiles).toContainEqual({
-      id: "stp.tmuxTerminal",
-      title: "STP: tmux",
+      id: "stp.terminal",
+      title: "STP",
     })
   })
 
-  test("defaults macOS integrated terminals to STP tmux", () => {
+  test("defaults macOS integrated terminals to the STP profile", () => {
     expect(packageJson.contributes.configurationDefaults).toEqual({
-      "terminal.integrated.defaultProfile.osx": "STP: tmux",
+      "terminal.integrated.defaultProfile.osx": "STP",
     })
   })
 
