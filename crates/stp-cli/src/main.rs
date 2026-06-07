@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 
+mod broker_commands;
 mod cli;
 mod commands;
 mod output;
@@ -45,6 +46,7 @@ fn main() -> Result<()> {
                 commands::cleanup_zombies(cleanup_args)
             }
         },
+        Command::Broker(args) => broker_commands::broker(args),
         Command::Doctor(args) => commands::doctor(args),
     }
 }

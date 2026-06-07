@@ -169,13 +169,18 @@ pub fn cleanup_zombies(args: CleanupZombiesArgs) -> Result<()> {
 }
 
 pub fn doctor(args: DoctorArgs) -> Result<()> {
-    check_command("tmux", &["-V"], "tmux not found")?;
-    check_command("cursor", &["--version"], "cursor CLI not found")?;
     let path = selected_registry_path(args.registry);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).context("registry directory is inaccessible")?;
     }
     stdout_line(&format!("registry: {}", path.display()))?;
+    if let Some(socket) = args.broker_socket {
+        if let Ok(status) = stp_pty::broker_status(&socket) {
+            stdout_line(&format!("broker ready pid {}", status.pid))?;
+        } else {
+            stdout_line(&format!("broker socket: {}", socket.display()))?;
+        }
+    }
     stdout_line("doctor ok")?;
     Ok(())
 }
@@ -203,18 +208,6 @@ fn ensure_session(
     );
     tmux.new_session(session_name, &command)?;
     Ok(())
-}
-
-fn check_command(name: &str, args: &[&str], message: &str) -> Result<()> {
-    let status = ProcessCommand::new(name)
-        .args(args)
-        .status()
-        .with_context(|| message.to_owned())?;
-    if status.success() {
-        Ok(())
-    } else {
-        bail!("{message}")
-    }
 }
 
 fn write_optional_log(path: Option<&Path>, line: &str) -> Result<()> {

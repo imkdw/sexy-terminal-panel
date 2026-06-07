@@ -21,6 +21,7 @@ pub enum Command {
     QaSendFocused(SendFocusedArgs),
     QaCapture(CaptureArgs),
     Registry(RegistryCommand),
+    Broker(BrokerCommand),
     Doctor(DoctorArgs),
 }
 
@@ -120,6 +121,83 @@ pub struct CaptureArgs {
 pub struct DoctorArgs {
     #[arg(long, env = "STP_REGISTRY")]
     pub registry: Option<PathBuf>,
+    #[arg(long, env = "STP_BROKER_SOCKET")]
+    pub broker_socket: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerCommand {
+    #[command(subcommand)]
+    pub command: BrokerSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum BrokerSubcommand {
+    Ensure(BrokerStateArgs),
+    Serve(BrokerStateArgs),
+    Status(BrokerSocketArgs),
+    Stop(BrokerSocketArgs),
+    Spawn(BrokerSpawnArgs),
+    Input(BrokerInputArgs),
+    Capture(BrokerCaptureArgs),
+    Terminate(BrokerTerminalArgs),
+    List(BrokerSocketArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerStateArgs {
+    #[arg(long, env = "STP_REGISTRY")]
+    pub registry: Option<PathBuf>,
+    #[arg(long, env = "STP_BROKER_SOCKET")]
+    pub socket: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerSocketArgs {
+    #[arg(long, env = "STP_BROKER_SOCKET")]
+    pub socket: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerSpawnArgs {
+    #[command(flatten)]
+    pub state: BrokerStateArgs,
+    #[arg(long)]
+    pub workspace: PathBuf,
+    #[arg(long)]
+    pub window_id: String,
+    #[arg(long)]
+    pub terminal_id: String,
+    #[arg(long)]
+    pub shell: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerInputArgs {
+    #[command(flatten)]
+    pub socket: BrokerSocketArgs,
+    #[arg(long)]
+    pub terminal_id: String,
+    #[arg(long)]
+    pub text: String,
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerCaptureArgs {
+    #[command(flatten)]
+    pub socket: BrokerSocketArgs,
+    #[arg(long)]
+    pub terminal_id: String,
+    #[arg(long, default_value_t = 50)]
+    pub lines: u16,
+}
+
+#[derive(Debug, Args)]
+pub struct BrokerTerminalArgs {
+    #[command(flatten)]
+    pub socket: BrokerSocketArgs,
+    #[arg(long)]
+    pub terminal_id: String,
 }
 
 #[derive(Debug, Subcommand)]

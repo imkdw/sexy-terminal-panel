@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
-use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
+use stp_core::registry::{ManagedTerminal, Registry, TerminalBackend, TerminalStatus};
 
 use super::session_sidebar::{WIDTH, command, mouse_binding, terminal_for_mouse_line, text};
 
@@ -223,6 +223,11 @@ fn terminal(id: &str, workspace: &str, branch: &str) -> ManagedTerminal {
         workspace_path: PathBuf::from(workspace),
         repo_root: PathBuf::from(workspace),
         branch_name: Some(branch.to_owned()),
+        backend: TerminalBackend::legacy_tmux(
+            "stp-test-socket".to_owned(),
+            "stp-test-session".to_owned(),
+            "0".to_owned(),
+        ),
         tmux_socket: "stp-test-socket".to_owned(),
         tmux_session: "stp-test-session".to_owned(),
         tmux_window: "0".to_owned(),

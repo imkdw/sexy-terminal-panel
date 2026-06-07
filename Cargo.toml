@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/stp-core",
+    "crates/stp-pty",
     "crates/stp-tmux",
     "crates/stp-cli",
 ]
@@ -15,17 +16,22 @@ version = "0.1.0"
 [workspace.dependencies]
 anyhow = "1"
 assert_cmd = "2"
+base64 = "0.22"
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
 predicates = "3"
+portable-pty = "0.9"
+nix = { version = "0.28", features = ["signal"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 stp-core = { path = "crates/stp-core" }
+stp-pty = { path = "crates/stp-pty" }
 stp-tmux = { path = "crates/stp-tmux" }
 tempfile = "3"
 thiserror = "2"
 uuid = { version = "1", features = ["serde", "v4"] }
+vt100 = "0.16"
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"

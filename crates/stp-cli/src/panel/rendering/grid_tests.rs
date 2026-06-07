@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
-use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
+use stp_core::registry::{ManagedTerminal, Registry, TerminalBackend, TerminalStatus};
 
 use super::grid::{LineEnding, display_text, render, truncate_to_width};
 use super::render_once;
@@ -172,6 +172,11 @@ fn terminal_with_status(
         workspace_path: PathBuf::from(workspace),
         repo_root: PathBuf::from(workspace),
         branch_name: Some(branch.to_owned()),
+        backend: TerminalBackend::legacy_tmux(
+            "stp-test".to_owned(),
+            "stp-test-session".to_owned(),
+            "0".to_owned(),
+        ),
         tmux_socket: "stp-test".to_owned(),
         tmux_session: "stp-test-session".to_owned(),
         tmux_window: "0".to_owned(),
