@@ -11,8 +11,23 @@ export type RegistryPathConfiguration = Readonly<{
 
 export type RegistryTerminalStatus = "starting" | "live" | "detached" | "stale" | "exited"
 
+export type RegistryTerminalBackend =
+  | Readonly<{
+      kind: "pty"
+      endpoint: Readonly<{
+        socketPath: string
+      }>
+    }>
+  | Readonly<{
+      kind: "legacy-tmux"
+      socket: string
+      session: string
+      window?: string
+    }>
+
 export type RegistryTerminalSession = Readonly<
   PendingTerminalSession & {
+    backend?: RegistryTerminalBackend
     status: RegistryTerminalStatus
   }
 >
@@ -69,31 +84,104 @@ function parseRegistryTerminal(value: unknown): RegistryTerminalSession | undefi
   }
   const terminalId = readString(value, "terminal_id")
   const workspacePath = readString(value, "workspace_path")
-  const tmuxSocket = readString(value, "tmux_socket")
-  const tmuxSession = readString(value, "tmux_session")
+  const backend = parseBackend(value)
   const status = parseStatus(readString(value, "status") ?? "live")
-  if (
-    terminalId === undefined ||
-    workspacePath === undefined ||
-    tmuxSocket === undefined ||
-    tmuxSession === undefined ||
-    status === undefined
-  ) {
+  if (terminalId === undefined || workspacePath === undefined || backend === undefined || status === undefined) {
     return undefined
   }
-  return {
+  const session = {
     name: buildTerminalSessionName({ terminalId, workspacePath }),
     terminalId,
     workspacePath,
-    tmuxSocket,
-    tmuxSession,
+    backend,
     status,
+  }
+  switch (backend.kind) {
+    case "legacy-tmux":
+      return {
+        ...session,
+        tmuxSocket: backend.socket,
+        tmuxSession: backend.session,
+      }
+    case "pty":
+      return session
   }
 }
 
 function readString(record: object, key: string): string | undefined {
   const value: unknown = Reflect.get(record, key)
   return typeof value === "string" ? value : undefined
+}
+
+function parseBackend(record: object): RegistryTerminalBackend | undefined {
+  const backend: unknown = Reflect.get(record, "backend")
+  if (typeof backend === "object" && backend !== null) {
+    return parseStructuredBackend(backend)
+  }
+  const tmuxSocket = readString(record, "tmux_socket")
+  const tmuxSession = readString(record, "tmux_session")
+  if (tmuxSocket === undefined || tmuxSession === undefined) {
+    return undefined
+  }
+  return legacyTmuxBackend(tmuxSocket, tmuxSession, readString(record, "tmux_window"))
+}
+
+function parseStructuredBackend(record: object): RegistryTerminalBackend | undefined {
+  const kind = readString(record, "kind")
+  switch (kind) {
+    case "pty":
+      return parsePtyBackend(record)
+    case "legacy-tmux":
+      return parseLegacyTmuxBackend(record)
+    default:
+      return undefined
+  }
+}
+
+function parsePtyBackend(record: object): RegistryTerminalBackend | undefined {
+  const endpoint: unknown = Reflect.get(record, "endpoint")
+  if (typeof endpoint !== "object" || endpoint === null) {
+    return undefined
+  }
+  const socketPath = readString(endpoint, "socket_path")
+  if (socketPath === undefined) {
+    return undefined
+  }
+  return {
+    kind: "pty",
+    endpoint: {
+      socketPath,
+    },
+  }
+}
+
+function parseLegacyTmuxBackend(record: object): RegistryTerminalBackend | undefined {
+  const socket = readString(record, "socket")
+  const session = readString(record, "session")
+  if (socket === undefined || session === undefined) {
+    return undefined
+  }
+  return legacyTmuxBackend(socket, session, readString(record, "window"))
+}
+
+function legacyTmuxBackend(
+  socket: string,
+  session: string,
+  window: string | undefined,
+): RegistryTerminalBackend {
+  if (window === undefined) {
+    return {
+      kind: "legacy-tmux",
+      socket,
+      session,
+    }
+  }
+  return {
+    kind: "legacy-tmux",
+    socket,
+    session,
+    window,
+  }
 }
 
 function parseStatus(value: string): RegistryTerminalStatus | undefined {
