@@ -9,7 +9,7 @@ export type RegistryPathConfiguration = Readonly<{
   globalValue?: string
 }>
 
-export type RegistryTerminalStatus = "starting" | "live" | "stale" | "exited"
+export type RegistryTerminalStatus = "starting" | "live" | "detached" | "stale" | "exited"
 
 export type RegistryTerminalSession = Readonly<
   PendingTerminalSession & {
@@ -100,6 +100,7 @@ function parseStatus(value: string): RegistryTerminalStatus | undefined {
   switch (value) {
     case "starting":
     case "live":
+    case "detached":
     case "stale":
     case "exited":
       return value

@@ -15,6 +15,7 @@ pub enum TerminalStatus {
     Starting,
     #[default]
     Live,
+    Detached,
     Stale,
     Exited,
 }

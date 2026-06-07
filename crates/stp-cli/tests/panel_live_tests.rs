@@ -41,7 +41,7 @@ fn panel_ignores_live_registry_entries_when_tmux_session_is_missing() {
 
     wait_for_pane_title(&socket, "empty:1");
     wait_for_titled_pane_capture(&socket, "empty:1", "slot 1: <empty>");
-    assert_eq!(registry_status(&registry, terminal_id), "stale");
+    assert!(registry_terminal_ids(&registry).is_empty());
     kill_tmux_server(&panel_socket);
     kill_tmux_server(&socket);
 }
@@ -249,16 +249,18 @@ fn wait_for_pane_title(socket: &str, expected_title: &str) -> String {
     }
 }
 
-fn registry_status(registry: &std::path::Path, terminal_id: &str) -> String {
+fn registry_terminal_ids(registry: &std::path::Path) -> Vec<String> {
     let raw = std::fs::read_to_string(registry).expect("registry json");
     let parsed: serde_json::Value = serde_json::from_str(&raw).expect("registry value");
     parsed["terminals"]
         .as_array()
         .expect("terminals array")
         .iter()
-        .find(|terminal| terminal["terminal_id"] == terminal_id)
-        .expect("registered terminal")["status"]
-        .as_str()
-        .expect("status string")
-        .to_owned()
+        .map(|terminal| {
+            terminal["terminal_id"]
+                .as_str()
+                .expect("terminal id")
+                .to_owned()
+        })
+        .collect()
 }

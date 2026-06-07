@@ -74,6 +74,23 @@ fn panel_sidebar_click_on_header_is_noop() {
     fixture.cleanup();
 }
 
+#[test]
+fn panel_sidebar_click_dead_rendered_row_does_not_select_next_session() {
+    let fixture = ClickFixture::new("dead-row", 2);
+    fixture.launch();
+    wait_for_pane_title(&fixture.socket, fixture.terminal_id(1));
+    wait_for_pane_title(&fixture.socket, fixture.terminal_id(2));
+    wait_for_active_pane_key(&fixture.socket, fixture.terminal_id(1));
+
+    fixture.kill_terminal_session(1);
+    fixture.panel_select("3");
+
+    assert_ne!(active_pane_key(&fixture.socket), fixture.terminal_id(2));
+    assert!(tmux_messages(&fixture.socket).contains("STP session is no longer live"));
+    assert_tmux_session_exists(&fixture.socket, &format!("stp-{}", fixture.terminal_id(2)));
+    fixture.cleanup();
+}
+
 struct ClickFixture {
     temp: TempDir,
     registry: std::path::PathBuf,
@@ -146,6 +163,19 @@ impl ClickFixture {
     fn select_pane(&self, pane_id: &str) {
         Command::new("tmux")
             .args(["-L", &self.socket, "select-pane", "-t", pane_id])
+            .assert()
+            .success();
+    }
+
+    fn kill_terminal_session(&self, one_based: usize) {
+        Command::new("tmux")
+            .args([
+                "-L",
+                &self.socket,
+                "kill-session",
+                "-t",
+                &format!("stp-{}", self.terminal_id(one_based)),
+            ])
             .assert()
             .success();
     }

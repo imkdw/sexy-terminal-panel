@@ -1,8 +1,8 @@
 import * as vscode from "vscode"
 
 import {
-  buildTerminateArgs,
   cleanupZombieSessions,
+  detachClosedTerminal,
   showTrackedTerminal,
   terminateCurrentTerminal,
 } from "./terminalCommands"
@@ -70,7 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidCloseTerminal((terminal) => {
       const session = sessions.removeTerminal(terminal)
       if (session !== undefined) {
-        void terminateClosedStpTerminal(session, treeProvider)
+        void detachClosedStpTerminal(session, treeProvider)
         treeProvider.refresh()
       }
     }),
@@ -141,16 +141,17 @@ async function showStpTerminalTreeItem(
   terminal.show(false)
 }
 
-async function terminateClosedStpTerminal(
+async function detachClosedStpTerminal(
   session: StpTerminalSession,
   treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
 ): Promise<void> {
-  const result = await runStpCommand(
-    session.binaryPath ?? currentBinaryPath(),
-    buildTerminateArgs(session.terminalId, session.registryPath),
-  )
-  if (result.kind === "failure") {
-    await vscode.window.showErrorMessage(`Failed to cleanup STP terminal: ${result.message}`)
+  const result = await detachClosedTerminal({
+    binaryPath: currentBinaryPath(),
+    runner: { run: runStpCommand },
+    session,
+  })
+  if (result.kind === "failed") {
+    await vscode.window.showErrorMessage(`Failed to detach STP terminal: ${result.message}`)
   }
   treeProvider.refresh()
 }

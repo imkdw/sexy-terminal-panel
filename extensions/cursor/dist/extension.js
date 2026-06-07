@@ -27,6 +27,14 @@ async function terminateCurrentTerminal(input) {
   input.refresh();
   return { kind: "terminated", terminalId: session.terminalId };
 }
+async function detachClosedTerminal(input) {
+  const binaryPath = input.session.binaryPath ?? input.binaryPath;
+  const result = await input.runner.run(binaryPath, buildDetachArgs(input.session.terminalId, input.session.registryPath));
+  if (result.kind === "failure") {
+    return { kind: "failed", message: result.message };
+  }
+  return { kind: "detached", terminalId: input.session.terminalId };
+}
 async function cleanupZombieSessions(input) {
   const result = await input.runner.run(input.binaryPath, buildCleanupZombiesArgs(input.registryPath));
   if (result.kind === "failure") {
@@ -36,6 +44,13 @@ async function cleanupZombieSessions(input) {
 }
 function buildTerminateArgs(terminalId, registryPath) {
   const args = ["terminate", "--terminal-id", terminalId, "--yes"];
+  if (registryPath !== undefined && registryPath.length > 0) {
+    return [...args, "--registry", registryPath];
+  }
+  return args;
+}
+function buildDetachArgs(terminalId, registryPath) {
+  const args = ["detach", "--terminal-id", terminalId];
   if (registryPath !== undefined && registryPath.length > 0) {
     return [...args, "--registry", registryPath];
   }
@@ -188,6 +203,7 @@ function parseStatus(value) {
   switch (value) {
     case "starting":
     case "live":
+    case "detached":
     case "stale":
     case "exited":
       return value;
@@ -424,7 +440,7 @@ function activate(context) {
   }), vscode4.window.onDidCloseTerminal((terminal) => {
     const session = sessions.removeTerminal(terminal);
     if (session !== undefined) {
-      terminateClosedStpTerminal(session, treeProvider);
+      detachClosedStpTerminal(session, treeProvider);
       treeProvider.refresh();
     }
   }), treeProvider);
@@ -479,10 +495,14 @@ async function showStpTerminalTreeItem(context, sessions, treeProvider, item) {
   }
   terminal.show(false);
 }
-async function terminateClosedStpTerminal(session, treeProvider) {
-  const result = await runStpCommand(session.binaryPath ?? currentBinaryPath(), buildTerminateArgs(session.terminalId, session.registryPath));
-  if (result.kind === "failure") {
-    await vscode4.window.showErrorMessage(`Failed to cleanup STP terminal: ${result.message}`);
+async function detachClosedStpTerminal(session, treeProvider) {
+  const result = await detachClosedTerminal({
+    binaryPath: currentBinaryPath(),
+    runner: { run: runStpCommand },
+    session
+  });
+  if (result.kind === "failed") {
+    await vscode4.window.showErrorMessage(`Failed to detach STP terminal: ${result.message}`);
   }
   treeProvider.refresh();
 }

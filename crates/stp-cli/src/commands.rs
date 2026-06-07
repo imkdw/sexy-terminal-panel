@@ -8,8 +8,8 @@ use stp_core::registry::{ManagedTerminal, RegistryStore, TerminalStatus};
 use stp_tmux::adapter::Tmux;
 
 use crate::cli::{
-    CaptureArgs, CleanupZombiesArgs, DoctorArgs, OpenCursorArgs, RemoveStaleArgs, TerminalArgs,
-    TerminateArgs,
+    CaptureArgs, CleanupZombiesArgs, DetachArgs, DoctorArgs, OpenCursorArgs, RemoveStaleArgs,
+    TerminalArgs, TerminateArgs,
 };
 use crate::output::{stdout_line, stdout_text};
 use crate::session_cleanup::remove_zombie_sessions;
@@ -126,6 +126,21 @@ pub fn terminate(args: TerminateArgs) -> Result<()> {
     } else {
         stdout_line(&format!("already exited {terminal_id}"))?;
     }
+    Ok(())
+}
+
+pub fn detach(args: DetachArgs) -> Result<()> {
+    let terminal_id = TerminalId::parse(&args.terminal_id)?;
+    let store = RegistryStore::new(selected_registry_path(args.registry));
+    let mut registry = store.load()?;
+    let terminal = registry
+        .terminals
+        .iter_mut()
+        .find(|terminal| terminal.terminal_id == terminal_id)
+        .ok_or_else(|| anyhow!("terminal not found: {terminal_id}"))?;
+    terminal.status = TerminalStatus::Detached;
+    store.save(&registry)?;
+    stdout_line(&format!("detached {terminal_id}"))?;
     Ok(())
 }
 

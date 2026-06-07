@@ -17,6 +17,7 @@ pub enum Command {
     PanelSelect(PanelSelectArgs),
     OpenCursor(OpenCursorArgs),
     Terminate(TerminateArgs),
+    Detach(DetachArgs),
     QaSendFocused(SendFocusedArgs),
     QaCapture(CaptureArgs),
     Registry(RegistryCommand),
@@ -85,6 +86,14 @@ pub struct TerminateArgs {
     pub terminal_id: String,
     #[arg(long)]
     pub yes: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct DetachArgs {
+    #[arg(long, env = "STP_REGISTRY")]
+    pub registry: Option<PathBuf>,
+    #[arg(long)]
+    pub terminal_id: String,
 }
 
 #[derive(Debug, Args)]

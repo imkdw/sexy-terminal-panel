@@ -26,6 +26,13 @@ describe("stpRegistry", () => {
             workspace_path: "/tmp/worktree-b",
             tmux_socket: "stp-managed",
             tmux_session: "stp-00000000-0000-0000-0000-000000000102",
+            status: "detached",
+          },
+          {
+            terminal_id: "00000000-0000-0000-0000-000000000103",
+            workspace_path: "/tmp/worktree-c",
+            tmux_socket: "stp-managed",
+            tmux_session: "stp-00000000-0000-0000-0000-000000000103",
             status: "stale",
           },
         ],

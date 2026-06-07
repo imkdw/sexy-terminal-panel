@@ -20,7 +20,7 @@ fn main() -> Result<()> {
             ));
             let layout = panel::Layout::parse(&args.layout);
             if args.once {
-                let registry = store.load()?;
+                let registry = session_cleanup::load_without_zombie_sessions(&store)?;
                 let rendered = panel::render_once(&registry, layout)?;
                 output::stdout_text(&rendered)?;
                 Ok(())
@@ -36,6 +36,7 @@ fn main() -> Result<()> {
         }
         Command::OpenCursor(args) => commands::open_cursor(args),
         Command::Terminate(args) => commands::terminate(args),
+        Command::Detach(args) => commands::detach(args),
         Command::QaSendFocused(args) => commands::send_focused(args),
         Command::QaCapture(args) => commands::capture(args),
         Command::Registry(args) => match args.command {

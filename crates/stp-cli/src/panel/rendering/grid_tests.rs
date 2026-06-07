@@ -59,6 +59,41 @@ fn render_once_shows_session_list_and_right_grid_preview() {
 }
 
 #[test]
+#[allow(clippy::expect_used)]
+fn render_ignores_non_live_sessions_in_grid_preview() {
+    let registry = Registry {
+        terminals: vec![
+            terminal_with_status(
+                "00000000-0000-0000-0000-000000000101",
+                "stale-worktree",
+                "main",
+                TerminalStatus::Stale,
+            ),
+            terminal(
+                "00000000-0000-0000-0000-000000000102",
+                "live-worktree",
+                "main",
+            ),
+        ],
+    };
+    let mut buffer = Vec::new();
+
+    render(
+        &registry,
+        Layout::TwoByTwo,
+        0,
+        LineEnding::Lf,
+        Some(120),
+        &mut buffer,
+    )
+    .expect("render");
+
+    let rendered = String::from_utf8(buffer).expect("utf8 render");
+    assert!(!rendered.contains("stale-worktree"));
+    assert!(rendered.contains("|>1: live-worktree"));
+}
+
+#[test]
 fn truncate_to_width_keeps_line_inside_width() {
     let truncated = truncate_to_width("slot 1: abcdefghijklmnopqrstuvwxyz", 16);
 
@@ -120,6 +155,16 @@ fn render_sanitizes_registry_display_fields() {
 
 #[allow(clippy::expect_used)]
 fn terminal(id: &str, workspace: &str, branch: &str) -> ManagedTerminal {
+    terminal_with_status(id, workspace, branch, TerminalStatus::Live)
+}
+
+#[allow(clippy::expect_used)]
+fn terminal_with_status(
+    id: &str,
+    workspace: &str,
+    branch: &str,
+    status: TerminalStatus,
+) -> ManagedTerminal {
     ManagedTerminal {
         terminal_id: TerminalId::parse(id).expect("terminal id"),
         workspace_id: WorkspaceId::new(format!("workspace-{workspace}")),
@@ -132,6 +177,6 @@ fn terminal(id: &str, workspace: &str, branch: &str) -> ManagedTerminal {
         tmux_window: "0".to_owned(),
         created_at: 0,
         last_seen_at: 0,
-        status: TerminalStatus::default(),
+        status,
     }
 }

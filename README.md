@@ -7,8 +7,12 @@ Sexy Terminal Panel is a macOS-first local tool for keeping Cursor worktree term
 - `stp terminal` registers a workspace terminal and starts or attaches a tmux session.
 - `stp panel` shows a native left session list next to the right content grid
   of managed terminal panes.
+- `stp panel` and `stp panel --once` remove live registry entries whose tmux
+  sessions are already gone before rendering.
 - The Cursor extension adds an Explorer `STP Terminals` view that lists tracked
   STP integrated terminals and live registry sessions.
+- Closing an STP integrated terminal marks its registry entry as `detached`, so
+  `stp panel` only shows STP terminals that are still open in Cursor.
 - Clicking an `STP Terminals` item shows the matching integrated terminal or
   opens one that attaches to the selected registry session.
 - `stp terminate --terminal-id <id> --yes` terminates one registered tmux-backed

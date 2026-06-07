@@ -10,16 +10,13 @@ use super::layout;
 #[cfg(test)]
 pub(super) use super::layout::{pane_commands, pane_titles};
 use super::session_sidebar;
-use crate::session_cleanup::mark_missing_live_sessions_stale;
+use crate::session_cleanup::{load_without_zombie_sessions, terminal_session_is_known_missing};
 
 const PANEL_SESSION: &str = "stp-panel";
 const PANEL_WINDOW: &str = "panel";
 
 pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow::Result<()> {
-    let mut registry = store.load()?;
-    if mark_missing_live_sessions_stale(&mut registry) {
-        store.save(&registry)?;
-    }
+    let registry = load_without_zombie_sessions(store)?;
     let commands = layout::pane_commands(&registry, layout);
     let titles = layout::pane_titles(&registry, layout);
     let tmux = Tmux::new(panel_socket);
@@ -141,6 +138,10 @@ pub fn select_from_sidebar(
         return Ok(());
     };
     let tmux = Tmux::new(panel_socket);
+    if terminal_session_is_known_missing(&terminal) {
+        tmux.display_message(PANEL_SESSION, "STP session is no longer live")?;
+        return Ok(());
+    }
     let panes = tmux.list_panes_with_titles(PANEL_SESSION)?;
     let terminal_id = terminal.terminal_id.to_string();
     if let Some(pane) = panes.iter().find(|pane| pane.pane_key == terminal_id) {

@@ -30,6 +30,7 @@ pub(super) fn render<W: Write>(
     writer: &mut W,
 ) -> io::Result<()> {
     let shape = GridShape::new(layout, max_width);
+    let terminals = live_terminals(registry);
     write_line(
         writer,
         line_ending,
@@ -50,7 +51,7 @@ pub(super) fn render<W: Write>(
     write_line(writer, line_ending, &shape.border())?;
 
     for row in 0..shape.rows {
-        let cells = row_cells(registry, focus, shape.columns, row);
+        let cells = row_cells(&terminals, focus, shape.columns, row);
         for line_index in 0..CELL_LINES {
             writer.write_all(b"|")?;
             for cell in &cells {
@@ -108,7 +109,7 @@ impl GridShape {
 }
 
 fn row_cells(
-    registry: &Registry,
+    terminals: &[&ManagedTerminal],
     focus: usize,
     columns: usize,
     row: usize,
@@ -118,13 +119,21 @@ fn row_cells(
         let slot_index = row.saturating_mul(columns).saturating_add(column);
         let marker = if slot_index == focus { ">" } else { " " };
         let slot_number = slot_index.saturating_add(1);
-        let cell = registry.terminals.get(slot_index).map_or_else(
+        let cell = terminals.get(slot_index).copied().map_or_else(
             || empty_cell(marker, slot_number),
             |terminal| terminal_cell(marker, slot_number, terminal),
         );
         cells.push(cell);
     }
     cells
+}
+
+fn live_terminals(registry: &Registry) -> Vec<&ManagedTerminal> {
+    registry
+        .terminals
+        .iter()
+        .filter(|terminal| terminal.status == TerminalStatus::Live)
+        .collect()
 }
 
 fn empty_cell(marker: &str, slot_number: usize) -> [String; CELL_LINES] {
@@ -193,6 +202,7 @@ const fn status_label(status: TerminalStatus) -> &'static str {
     match status {
         TerminalStatus::Starting => "starting",
         TerminalStatus::Live => "live",
+        TerminalStatus::Detached => "detached",
         TerminalStatus::Stale => "stale",
         TerminalStatus::Exited => "exited",
     }

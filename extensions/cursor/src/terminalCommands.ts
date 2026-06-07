@@ -25,6 +25,10 @@ export type TerminationResult =
   | Readonly<{ kind: "no-active-terminal" }>
   | Readonly<{ kind: "untracked" }>
 
+export type DetachResult =
+  | Readonly<{ kind: "detached"; terminalId: string }>
+  | Readonly<{ kind: "failed"; message: string }>
+
 export type CleanupResult =
   | Readonly<{ kind: "cleaned"; stdout: string }>
   | Readonly<{ kind: "failed"; message: string }>
@@ -75,6 +79,22 @@ export async function terminateCurrentTerminal<TTerminal extends TerminalControl
   return { kind: "terminated", terminalId: session.terminalId }
 }
 
+export async function detachClosedTerminal<TTerminal>(input: {
+  readonly binaryPath: string
+  readonly runner: CommandRunner
+  readonly session: TerminalSession<TTerminal>
+}): Promise<DetachResult> {
+  const binaryPath = input.session.binaryPath ?? input.binaryPath
+  const result = await input.runner.run(
+    binaryPath,
+    buildDetachArgs(input.session.terminalId, input.session.registryPath),
+  )
+  if (result.kind === "failure") {
+    return { kind: "failed", message: result.message }
+  }
+  return { kind: "detached", terminalId: input.session.terminalId }
+}
+
 export async function cleanupZombieSessions(input: {
   readonly binaryPath: string
   readonly registryPath: string
@@ -95,6 +115,17 @@ export function buildTerminateArgs(
   registryPath: string | undefined,
 ): readonly string[] {
   const args = ["terminate", "--terminal-id", terminalId, "--yes"]
+  if (registryPath !== undefined && registryPath.length > 0) {
+    return [...args, "--registry", registryPath]
+  }
+  return args
+}
+
+export function buildDetachArgs(
+  terminalId: string,
+  registryPath: string | undefined,
+): readonly string[] {
+  const args = ["detach", "--terminal-id", terminalId]
   if (registryPath !== undefined && registryPath.length > 0) {
     return [...args, "--registry", registryPath]
   }
