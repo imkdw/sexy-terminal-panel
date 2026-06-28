@@ -1,11 +1,18 @@
-export type RegularTerminalOptions = Readonly<{
+export type StpTerminalOptions = Readonly<{
   name: string
   cwd: string
+  shellPath: string
+  shellArgs: readonly string[]
 }>
 
-export type RegularTerminalInput = Readonly<{
+export type StpTerminalInput = Readonly<{
   name: string
   workspacePath: string
+  binaryPath: string
+  registryPath: string
+  tmuxSocket: string
+  windowId: string
+  terminalId: string
 }>
 
 export type WorkspaceCandidate = Readonly<{
@@ -29,12 +36,24 @@ export class NoWorkspaceError extends Error {
   }
 }
 
-export function buildRegularTerminalOptions(
-  input: RegularTerminalInput,
-): RegularTerminalOptions {
+export function buildStpTerminalOptions(input: StpTerminalInput): StpTerminalOptions {
   return {
     name: input.name,
     cwd: input.workspacePath,
+    shellPath: input.binaryPath,
+    shellArgs: [
+      "terminal",
+      "--workspace",
+      input.workspacePath,
+      "--window-id",
+      input.windowId,
+      "--terminal-id",
+      input.terminalId,
+      "--registry",
+      input.registryPath,
+      "--socket",
+      input.tmuxSocket,
+    ],
   }
 }
 

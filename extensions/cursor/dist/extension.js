@@ -33,16 +33,16 @@ async function terminateCurrentTerminal(input) {
   input.refresh();
   return { kind: "terminated", terminalId: session.terminalId };
 }
-async function detachClosedTerminal(input) {
+async function terminateClosedTerminal(input) {
   if (!usesRegistryCommand(input.session)) {
-    return { kind: "detached", terminalId: input.session.terminalId };
+    return { kind: "terminated", terminalId: input.session.terminalId };
   }
   const binaryPath = input.session.binaryPath ?? input.binaryPath;
-  const result = await input.runner.run(binaryPath, buildDetachArgs(input.session.terminalId, input.session.registryPath));
+  const result = await input.runner.run(binaryPath, buildTerminateArgs(input.session.terminalId, input.session.registryPath));
   if (result.kind === "failure") {
     return { kind: "failed", message: result.message };
   }
-  return { kind: "detached", terminalId: input.session.terminalId };
+  return { kind: "terminated", terminalId: input.session.terminalId };
 }
 async function cleanupZombieSessions(input) {
   const result = await input.runner.run(input.binaryPath, buildCleanupZombiesArgs(input.registryPath));
@@ -53,13 +53,6 @@ async function cleanupZombieSessions(input) {
 }
 function buildTerminateArgs(terminalId, registryPath) {
   const args = ["terminate", "--terminal-id", terminalId, "--yes"];
-  if (registryPath !== undefined && registryPath.length > 0) {
-    return [...args, "--registry", registryPath];
-  }
-  return args;
-}
-function buildDetachArgs(terminalId, registryPath) {
-  const args = ["detach", "--terminal-id", terminalId];
   if (registryPath !== undefined && registryPath.length > 0) {
     return [...args, "--registry", registryPath];
   }
@@ -192,24 +185,94 @@ function parseRegistryTerminal(value) {
   }
   const terminalId = readString(value, "terminal_id");
   const workspacePath = readString(value, "workspace_path");
-  const tmuxSocket = readString(value, "tmux_socket");
-  const tmuxSession = readString(value, "tmux_session");
+  const backend = parseBackend(value);
   const status = parseStatus(readString(value, "status") ?? "live");
-  if (terminalId === undefined || workspacePath === undefined || tmuxSocket === undefined || tmuxSession === undefined || status === undefined) {
+  if (terminalId === undefined || workspacePath === undefined || backend === undefined || status === undefined) {
     return;
   }
-  return {
+  const session = {
     name: buildTerminalSessionName({ terminalId, workspacePath }),
     terminalId,
     workspacePath,
-    tmuxSocket,
-    tmuxSession,
+    backend,
     status
   };
+  switch (backend.kind) {
+    case "legacy-tmux":
+      return {
+        ...session,
+        tmuxSocket: backend.socket,
+        tmuxSession: backend.session
+      };
+    case "pty":
+      return session;
+  }
 }
 function readString(record, key) {
   const value = Reflect.get(record, key);
   return typeof value === "string" ? value : undefined;
+}
+function parseBackend(record) {
+  const backend = Reflect.get(record, "backend");
+  if (typeof backend === "object" && backend !== null) {
+    return parseStructuredBackend(backend);
+  }
+  const tmuxSocket = readString(record, "tmux_socket");
+  const tmuxSession = readString(record, "tmux_session");
+  if (tmuxSocket === undefined || tmuxSession === undefined) {
+    return;
+  }
+  return legacyTmuxBackend(tmuxSocket, tmuxSession, readString(record, "tmux_window"));
+}
+function parseStructuredBackend(record) {
+  const kind = readString(record, "kind");
+  switch (kind) {
+    case "pty":
+      return parsePtyBackend(record);
+    case "legacy-tmux":
+      return parseLegacyTmuxBackend(record);
+    default:
+      return;
+  }
+}
+function parsePtyBackend(record) {
+  const endpoint = Reflect.get(record, "endpoint");
+  if (typeof endpoint !== "object" || endpoint === null) {
+    return;
+  }
+  const socketPath = readString(endpoint, "socket_path");
+  if (socketPath === undefined) {
+    return;
+  }
+  return {
+    kind: "pty",
+    endpoint: {
+      socketPath
+    }
+  };
+}
+function parseLegacyTmuxBackend(record) {
+  const socket = readString(record, "socket");
+  const session = readString(record, "session");
+  if (socket === undefined || session === undefined) {
+    return;
+  }
+  return legacyTmuxBackend(socket, session, readString(record, "window"));
+}
+function legacyTmuxBackend(socket, session, window) {
+  if (window === undefined) {
+    return {
+      kind: "legacy-tmux",
+      socket,
+      session
+    };
+  }
+  return {
+    kind: "legacy-tmux",
+    socket,
+    session,
+    window
+  };
 }
 function parseStatus(value) {
   switch (value) {
@@ -230,10 +293,24 @@ class NoWorkspaceError extends Error {
     this.name = "NoWorkspaceError";
   }
 }
-function buildRegularTerminalOptions(input) {
+function buildStpTerminalOptions(input) {
   return {
     name: input.name,
-    cwd: input.workspacePath
+    cwd: input.workspacePath,
+    shellPath: input.binaryPath,
+    shellArgs: [
+      "terminal",
+      "--workspace",
+      input.workspacePath,
+      "--window-id",
+      input.windowId,
+      "--terminal-id",
+      input.terminalId,
+      "--registry",
+      input.registryPath,
+      "--socket",
+      input.tmuxSocket
+    ]
   };
 }
 function selectWorkspacePath(workspaces) {
@@ -252,10 +329,22 @@ function selectBinaryPath(configuration) {
   }
   return "stp";
 }
+function selectTmuxSocket(configuration) {
+  if (configuration?.globalValue !== undefined && configuration.globalValue.length > 0) {
+    return configuration.globalValue;
+  }
+  if (configuration?.defaultValue !== undefined && configuration.defaultValue.length > 0) {
+    return configuration.defaultValue;
+  }
+  return "stp-managed";
+}
 
 // src/extensionConfig.ts
 function currentBinaryPath() {
   return selectBinaryPath(vscode.workspace.getConfiguration("stp").inspect("binaryPath"));
+}
+function currentTmuxSocket() {
+  return selectTmuxSocket(vscode.workspace.getConfiguration("stp").inspect("tmuxSocket"));
 }
 function currentRegistryPath() {
   return selectRegistryPath(vscode.workspace.getConfiguration("stp").inspect("registryPath"));
@@ -282,23 +371,39 @@ function runStpCommand(binaryPath, args) {
 // src/stpTerminalProfile.ts
 import { randomUUID } from "node:crypto";
 import * as vscode2 from "vscode";
-async function createStpTerminalProfile(sessions, existingSession) {
+async function createStpTerminalProfile(sessions, configuration, existingSession) {
   try {
     const workspacePath = existingSession?.workspacePath ?? selectWorkspacePath((vscode2.workspace.workspaceFolders ?? []).map((folder) => ({
       path: folder.uri.fsPath
     })));
     const terminalId = existingSession?.terminalId ?? randomUUID();
-    const session = sessions.createPending({
+    const session = sessions.createPending(existingSession === undefined ? {
       terminalId,
-      workspacePath
+      workspacePath,
+      binaryPath: configuration.binaryPath,
+      registryPath: configuration.registryPath,
+      tmuxSocket: configuration.tmuxSocket
+    } : {
+      ...existingSession,
+      binaryPath: existingSession.binaryPath ?? configuration.binaryPath,
+      registryPath: existingSession.registryPath ?? configuration.registryPath,
+      tmuxSocket: existingSession.tmuxSocket ?? configuration.tmuxSocket
     });
-    const options = buildRegularTerminalOptions({
+    const options = buildStpTerminalOptions({
       name: session.name,
-      workspacePath
+      workspacePath,
+      binaryPath: session.binaryPath ?? configuration.binaryPath,
+      registryPath: session.registryPath ?? configuration.registryPath,
+      tmuxSocket: session.tmuxSocket ?? configuration.tmuxSocket,
+      windowId: randomUUID(),
+      terminalId
     });
     return {
       pending: session,
-      profile: new vscode2.TerminalProfile(options)
+      profile: new vscode2.TerminalProfile({
+        ...options,
+        shellArgs: [...options.shellArgs]
+      })
     };
   } catch (error) {
     if (error instanceof NoWorkspaceError) {
@@ -366,12 +471,12 @@ function activate(context) {
   const treeProvider = new StpTerminalTreeProvider(sessions, () => loadLiveRegistrySessions(currentRegistryPath()));
   const provider = {
     async provideTerminalProfile() {
-      const { profile } = await createStpTerminalProfile(sessions);
+      const { profile } = await createStpTerminalProfile(sessions, currentTerminalProfileConfig());
       return profile;
     }
   };
   context.subscriptions.push(vscode4.window.registerTerminalProfileProvider(PROFILE_ID, provider), vscode4.window.registerTreeDataProvider(SESSIONS_VIEW_ID, treeProvider), vscode4.commands.registerCommand(NEW_TERMINAL_COMMAND, async () => {
-    const { pending, profile } = await createStpTerminalProfile(sessions);
+    const { pending, profile } = await createStpTerminalProfile(sessions, currentTerminalProfileConfig());
     const terminal = vscode4.window.createTerminal(profile.options);
     const session = sessions.attachOpenedTerminal({
       initialName: pending.name,
@@ -396,7 +501,7 @@ function activate(context) {
   }), vscode4.window.onDidCloseTerminal((terminal) => {
     const session = sessions.removeTerminal(terminal);
     if (session !== undefined) {
-      detachClosedStpTerminal(session, treeProvider);
+      terminateClosedStpTerminal(session, treeProvider);
       treeProvider.refresh();
     }
   }), treeProvider);
@@ -435,11 +540,7 @@ async function showStpTerminalTreeItem(sessions, treeProvider, item) {
     showTrackedTerminal(openedSession);
     return;
   }
-  const { pending, profile } = await createStpTerminalProfile(sessions, {
-    ...item.session,
-    binaryPath: currentBinaryPath(),
-    registryPath: currentRegistryPath()
-  });
+  const { pending, profile } = await createStpTerminalProfile(sessions, currentTerminalProfileConfig(), item.session);
   const terminal = vscode4.window.createTerminal(profile.options);
   const session = sessions.attachOpenedTerminal({
     initialName: pending.name,
@@ -451,16 +552,23 @@ async function showStpTerminalTreeItem(sessions, treeProvider, item) {
   }
   terminal.show(false);
 }
-async function detachClosedStpTerminal(session, treeProvider) {
-  const result = await detachClosedTerminal({
+async function terminateClosedStpTerminal(session, treeProvider) {
+  const result = await terminateClosedTerminal({
     binaryPath: currentBinaryPath(),
     runner: { run: runStpCommand },
     session
   });
   if (result.kind === "failed") {
-    await vscode4.window.showErrorMessage(`Failed to detach STP terminal: ${result.message}`);
+    await vscode4.window.showErrorMessage(`Failed to terminate STP terminal: ${result.message}`);
   }
   treeProvider.refresh();
+}
+function currentTerminalProfileConfig() {
+  return {
+    binaryPath: currentBinaryPath(),
+    registryPath: currentRegistryPath(),
+    tmuxSocket: currentTmuxSocket()
+  };
 }
 async function cleanupZombieRegistry(treeProvider) {
   const result = await cleanupZombieSessions({

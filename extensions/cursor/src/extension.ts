@@ -2,14 +2,17 @@ import * as vscode from "vscode"
 
 import {
   cleanupZombieSessions,
-  detachClosedTerminal,
   showTrackedTerminal,
+  terminateClosedTerminal,
   terminateCurrentTerminal,
 } from "./terminalCommands"
-import { currentBinaryPath, currentRegistryPath } from "./extensionConfig"
+import { currentBinaryPath, currentRegistryPath, currentTmuxSocket } from "./extensionConfig"
 import { loadLiveRegistrySessions } from "./stpRegistry"
 import { runStpCommand } from "./stpCommandRunner"
-import { createStpTerminalProfile } from "./stpTerminalProfile"
+import {
+  createStpTerminalProfile,
+  type StpTerminalProfileConfiguration,
+} from "./stpTerminalProfile"
 import { TerminalSessionStore, type TerminalSession } from "./terminalSessions"
 import { StpTerminalTreeProvider, type StpTerminalTreeItem } from "./terminalTree"
 
@@ -26,7 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
   )
   const provider: vscode.TerminalProfileProvider = {
     async provideTerminalProfile() {
-      const { profile } = await createStpTerminalProfile(sessions)
+      const { profile } = await createStpTerminalProfile(sessions, currentTerminalProfileConfig())
       return profile
     },
   }
@@ -34,7 +37,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTerminalProfileProvider(PROFILE_ID, provider),
     vscode.window.registerTreeDataProvider(SESSIONS_VIEW_ID, treeProvider),
     vscode.commands.registerCommand(NEW_TERMINAL_COMMAND, async () => {
-      const { pending, profile } = await createStpTerminalProfile(sessions)
+      const { pending, profile } = await createStpTerminalProfile(
+        sessions,
+        currentTerminalProfileConfig(),
+      )
       const terminal = vscode.window.createTerminal(profile.options)
       const session = sessions.attachOpenedTerminal({
         initialName: pending.name,
@@ -70,7 +76,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidCloseTerminal((terminal) => {
       const session = sessions.removeTerminal(terminal)
       if (session !== undefined) {
-        void detachClosedStpTerminal(session, treeProvider)
+        void terminateClosedStpTerminal(session, treeProvider)
         treeProvider.refresh()
       }
     }),
@@ -123,11 +129,11 @@ async function showStpTerminalTreeItem(
     showTrackedTerminal(openedSession)
     return
   }
-  const { pending, profile } = await createStpTerminalProfile(sessions, {
-    ...item.session,
-    binaryPath: currentBinaryPath(),
-    registryPath: currentRegistryPath(),
-  })
+  const { pending, profile } = await createStpTerminalProfile(
+    sessions,
+    currentTerminalProfileConfig(),
+    item.session,
+  )
   const terminal = vscode.window.createTerminal(profile.options)
   const session = sessions.attachOpenedTerminal({
     initialName: pending.name,
@@ -140,19 +146,27 @@ async function showStpTerminalTreeItem(
   terminal.show(false)
 }
 
-async function detachClosedStpTerminal(
+async function terminateClosedStpTerminal(
   session: StpTerminalSession,
   treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
 ): Promise<void> {
-  const result = await detachClosedTerminal({
+  const result = await terminateClosedTerminal({
     binaryPath: currentBinaryPath(),
     runner: { run: runStpCommand },
     session,
   })
   if (result.kind === "failed") {
-    await vscode.window.showErrorMessage(`Failed to detach STP terminal: ${result.message}`)
+    await vscode.window.showErrorMessage(`Failed to terminate STP terminal: ${result.message}`)
   }
   treeProvider.refresh()
+}
+
+function currentTerminalProfileConfig(): StpTerminalProfileConfiguration {
+  return {
+    binaryPath: currentBinaryPath(),
+    registryPath: currentRegistryPath(),
+    tmuxSocket: currentTmuxSocket(),
+  }
 }
 
 async function cleanupZombieRegistry(

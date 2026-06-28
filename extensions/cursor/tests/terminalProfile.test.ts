@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import packageJson from "../package.json"
 import {
-  buildRegularTerminalOptions,
+  buildStpTerminalOptions,
   selectBinaryPath,
   selectTmuxSocket,
   selectWorkspacePath,
@@ -9,15 +9,34 @@ import {
 import { selectRegistryPath } from "../src/stpRegistry"
 
 describe("terminalProfile", () => {
-  test("builds regular terminal options when workspace is available", () => {
-    const options = buildRegularTerminalOptions({
+  test("builds STP terminal options that register a managed tmux session", () => {
+    const options = buildStpTerminalOptions({
       name: "STP: worktree-a 00000000",
       workspacePath: "/tmp/worktree-a",
+      binaryPath: "/opt/stp/bin/stp",
+      registryPath: "/tmp/stp-registry.json",
+      tmuxSocket: "stp-managed",
+      windowId: "00000000-0000-0000-0000-000000000201",
+      terminalId: "00000000-0000-0000-0000-000000000101",
     })
 
     expect(options).toEqual({
       name: "STP: worktree-a 00000000",
       cwd: "/tmp/worktree-a",
+      shellPath: "/opt/stp/bin/stp",
+      shellArgs: [
+        "terminal",
+        "--workspace",
+        "/tmp/worktree-a",
+        "--window-id",
+        "00000000-0000-0000-0000-000000000201",
+        "--terminal-id",
+        "00000000-0000-0000-0000-000000000101",
+        "--registry",
+        "/tmp/stp-registry.json",
+        "--socket",
+        "stp-managed",
+      ],
     })
   })
 

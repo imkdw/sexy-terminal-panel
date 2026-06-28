@@ -1,10 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   buildCleanupZombiesArgs,
-  buildDetachArgs,
   buildTerminateArgs,
   cleanupZombieSessions,
-  detachClosedTerminal,
   showTrackedTerminal,
   terminateCurrentTerminal,
   type CommandRunner,
@@ -189,72 +187,6 @@ describe("terminalCommands", () => {
       "00000000-0000-0000-0000-000000000101",
       "--yes",
     ])
-  })
-
-  test("builds detach CLI args from the terminal id contract", () => {
-    expect(buildDetachArgs("00000000-0000-0000-0000-000000000101", undefined)).toEqual([
-      "detach",
-      "--terminal-id",
-      "00000000-0000-0000-0000-000000000101",
-    ])
-  })
-
-  test("marks a closed tracked terminal detached without disposing it", async () => {
-    const terminal = new FakeTerminal("terminal-a")
-    const runner = new RecordingRunner({ kind: "success", stdout: "detached" })
-
-    const result = await detachClosedTerminal({
-      binaryPath: "/opt/stp/bin/stp",
-      runner,
-      session: {
-        terminalId: "00000000-0000-0000-0000-000000000101",
-        name: "STP: worktree-a 00000000",
-        workspacePath: "/tmp/worktree-a",
-        registryPath: "/tmp/stp-registry.json",
-        terminal,
-      },
-    })
-
-    expect(result).toEqual({
-      kind: "detached",
-      terminalId: "00000000-0000-0000-0000-000000000101",
-    })
-    expect(runner.calls).toEqual([
-      {
-        binaryPath: "/opt/stp/bin/stp",
-        args: [
-          "detach",
-          "--terminal-id",
-          "00000000-0000-0000-0000-000000000101",
-          "--registry",
-          "/tmp/stp-registry.json",
-        ],
-      },
-    ])
-    expect(terminal.disposeCount).toBe(0)
-  })
-
-  test("marks a closed regular tracked terminal detached without running the CLI", async () => {
-    const terminal = new FakeTerminal("terminal-a")
-    const runner = new RecordingRunner({ kind: "failure", message: "should not run" })
-
-    const result = await detachClosedTerminal({
-      binaryPath: "/opt/stp/bin/stp",
-      runner,
-      session: {
-        terminalId: "00000000-0000-0000-0000-000000000101",
-        name: "STP: worktree-a 00000000",
-        workspacePath: "/tmp/worktree-a",
-        terminal,
-      },
-    })
-
-    expect(result).toEqual({
-      kind: "detached",
-      terminalId: "00000000-0000-0000-0000-000000000101",
-    })
-    expect(runner.calls).toEqual([])
-    expect(terminal.disposeCount).toBe(0)
   })
 
   test("builds cleanup zombie CLI args from the registry path contract", () => {
