@@ -44,6 +44,26 @@ async function terminateClosedTerminal(input) {
   }
   return { kind: "terminated", terminalId: input.session.terminalId };
 }
+async function terminateTrackedTerminals(input) {
+  const terminatedTerminalIds = [];
+  const failures = [];
+  for (const session of input.store.drainSessions()) {
+    const result = await terminateClosedTerminal({
+      binaryPath: input.binaryPath,
+      runner: input.runner,
+      session
+    });
+    if (result.kind === "failed") {
+      failures.push({
+        terminalId: session.terminalId,
+        message: result.message
+      });
+      continue;
+    }
+    terminatedTerminalIds.push(result.terminalId);
+  }
+  return { terminatedTerminalIds, failures };
+}
 async function cleanupZombieSessions(input) {
   const result = await input.runner.run(input.binaryPath, buildCleanupZombiesArgs(input.registryPath));
   if (result.kind === "failure") {
@@ -114,6 +134,12 @@ class TerminalSessionStore {
     this.sessionsByTerminal.delete(terminal);
     this.sessionsById.delete(session.terminalId);
     return session;
+  }
+  drainSessions() {
+    const sessions = this.sessions();
+    this.sessionsByTerminal.clear();
+    this.sessionsById.clear();
+    return sessions;
   }
   trackOpenedSession(session) {
     this.sessionsByTerminal.set(session.terminal, session);
@@ -466,9 +492,11 @@ var SESSIONS_VIEW_ID = "stp.terminals";
 var NEW_TERMINAL_COMMAND = "stp.newTerminal";
 var SHOW_TERMINAL_COMMAND = "stp.showTerminal";
 var TERMINATE_CURRENT_TERMINAL_COMMAND = "stp.terminateCurrentTerminal";
+var activeExtension;
 function activate(context) {
   const sessions = new TerminalSessionStore;
   const treeProvider = new StpTerminalTreeProvider(sessions, () => loadLiveRegistrySessions(currentRegistryPath()));
+  activeExtension = { sessions };
   const provider = {
     async provideTerminalProfile() {
       const { profile } = await createStpTerminalProfile(sessions, currentTerminalProfileConfig());
@@ -507,7 +535,21 @@ function activate(context) {
   }), treeProvider);
   cleanupZombieRegistry(treeProvider);
 }
-function deactivate() {}
+async function deactivate() {
+  const extension = activeExtension;
+  activeExtension = undefined;
+  if (extension === undefined) {
+    return;
+  }
+  const result = await terminateTrackedTerminals({
+    binaryPath: currentBinaryPath(),
+    runner: { run: runStpCommand },
+    store: extension.sessions
+  });
+  if (result.failures.length > 0) {
+    await vscode4.window.showErrorMessage(`Failed to terminate STP terminal sessions: ${result.failures.map((failure) => `${failure.terminalId}: ${failure.message}`).join("; ")}`);
+  }
+}
 function terminateCurrentStpTerminal(sessions, treeProvider) {
   return terminateCurrentTerminal({
     activeTerminal: vscode4.window.activeTerminal,

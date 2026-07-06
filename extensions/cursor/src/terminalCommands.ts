@@ -33,6 +33,16 @@ export type CleanupResult =
   | Readonly<{ kind: "cleaned"; stdout: string }>
   | Readonly<{ kind: "failed"; message: string }>
 
+export type TrackedTerminalFailure = Readonly<{
+  terminalId: string
+  message: string
+}>
+
+export type TrackedTerminalTerminationResult = Readonly<{
+  terminatedTerminalIds: readonly string[]
+  failures: readonly TrackedTerminalFailure[]
+}>
+
 export type TerminateCurrentTerminalInput<TTerminal extends TerminalController> = Readonly<{
   activeTerminal: TTerminal | undefined
   binaryPath: string
@@ -104,6 +114,31 @@ export async function terminateClosedTerminal<TTerminal>(input: {
     return { kind: "failed", message: result.message }
   }
   return { kind: "terminated", terminalId: input.session.terminalId }
+}
+
+export async function terminateTrackedTerminals<TTerminal>(input: {
+  readonly binaryPath: string
+  readonly runner: CommandRunner
+  readonly store: TerminalSessionStore<TTerminal>
+}): Promise<TrackedTerminalTerminationResult> {
+  const terminatedTerminalIds: string[] = []
+  const failures: TrackedTerminalFailure[] = []
+  for (const session of input.store.drainSessions()) {
+    const result = await terminateClosedTerminal({
+      binaryPath: input.binaryPath,
+      runner: input.runner,
+      session,
+    })
+    if (result.kind === "failed") {
+      failures.push({
+        terminalId: session.terminalId,
+        message: result.message,
+      })
+      continue
+    }
+    terminatedTerminalIds.push(result.terminalId)
+  }
+  return { terminatedTerminalIds, failures }
 }
 
 export async function cleanupZombieSessions(input: {

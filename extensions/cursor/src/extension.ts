@@ -5,6 +5,7 @@ import {
   showTrackedTerminal,
   terminateClosedTerminal,
   terminateCurrentTerminal,
+  terminateTrackedTerminals,
 } from "./terminalCommands"
 import { currentBinaryPath, currentRegistryPath, currentTmuxSocket } from "./extensionConfig"
 import { loadLiveRegistrySessions } from "./stpRegistry"
@@ -22,11 +23,18 @@ const NEW_TERMINAL_COMMAND = "stp.newTerminal"
 const SHOW_TERMINAL_COMMAND = "stp.showTerminal"
 const TERMINATE_CURRENT_TERMINAL_COMMAND = "stp.terminateCurrentTerminal"
 
+type ActiveExtension = Readonly<{
+  sessions: TerminalSessionStore<vscode.Terminal>
+}>
+
+let activeExtension: ActiveExtension | undefined
+
 export function activate(context: vscode.ExtensionContext): void {
   const sessions = new TerminalSessionStore<vscode.Terminal>()
   const treeProvider = new StpTerminalTreeProvider(sessions, () =>
     loadLiveRegistrySessions(currentRegistryPath()),
   )
+  activeExtension = { sessions }
   const provider: vscode.TerminalProfileProvider = {
     async provideTerminalProfile() {
       const { profile } = await createStpTerminalProfile(sessions, currentTerminalProfileConfig())
@@ -85,7 +93,26 @@ export function activate(context: vscode.ExtensionContext): void {
   void cleanupZombieRegistry(treeProvider)
 }
 
-export function deactivate(): void {}
+export async function deactivate(): Promise<void> {
+  const extension = activeExtension
+  activeExtension = undefined
+  if (extension === undefined) {
+    return
+  }
+
+  const result = await terminateTrackedTerminals({
+    binaryPath: currentBinaryPath(),
+    runner: { run: runStpCommand },
+    store: extension.sessions,
+  })
+  if (result.failures.length > 0) {
+    await vscode.window.showErrorMessage(
+      `Failed to terminate STP terminal sessions: ${result.failures
+        .map((failure) => `${failure.terminalId}: ${failure.message}`)
+        .join("; ")}`,
+    )
+  }
+}
 
 type StpTerminalSession = TerminalSession<vscode.Terminal>
 

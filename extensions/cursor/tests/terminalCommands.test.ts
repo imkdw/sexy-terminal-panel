@@ -4,6 +4,7 @@ import {
   buildTerminateArgs,
   cleanupZombieSessions,
   showTrackedTerminal,
+  terminateTrackedTerminals,
   terminateCurrentTerminal,
   type CommandRunner,
   type MessageSink,
@@ -221,6 +222,67 @@ describe("terminalCommands", () => {
         ],
       },
     ])
+  })
+
+  test("terminates and drains tracked terminals during extension shutdown", async () => {
+    const store = new TerminalSessionStore<FakeTerminal>()
+    const terminalA = new FakeTerminal("terminal-a")
+    const terminalB = new FakeTerminal("terminal-b")
+    store.trackOpenedSession({
+      terminalId: "00000000-0000-0000-0000-000000000101",
+      name: "STP: worktree-a 00000000",
+      workspacePath: "/tmp/worktree-a",
+      registryPath: "/tmp/stp-registry.json",
+      terminal: terminalA,
+    })
+    store.trackOpenedSession({
+      terminalId: "00000000-0000-0000-0000-000000000102",
+      name: "STP: worktree-a 00000000",
+      workspacePath: "/tmp/worktree-a",
+      registryPath: "/tmp/stp-registry.json",
+      terminal: terminalB,
+    })
+    const runner = new RecordingRunner({ kind: "success", stdout: "terminated" })
+
+    const result = await terminateTrackedTerminals({
+      binaryPath: "/opt/stp/bin/stp",
+      runner,
+      store,
+    })
+
+    expect(result).toEqual({
+      failures: [],
+      terminatedTerminalIds: [
+        "00000000-0000-0000-0000-000000000101",
+        "00000000-0000-0000-0000-000000000102",
+      ],
+    })
+    expect(runner.calls).toEqual([
+      {
+        binaryPath: "/opt/stp/bin/stp",
+        args: [
+          "terminate",
+          "--terminal-id",
+          "00000000-0000-0000-0000-000000000101",
+          "--yes",
+          "--registry",
+          "/tmp/stp-registry.json",
+        ],
+      },
+      {
+        binaryPath: "/opt/stp/bin/stp",
+        args: [
+          "terminate",
+          "--terminal-id",
+          "00000000-0000-0000-0000-000000000102",
+          "--yes",
+          "--registry",
+          "/tmp/stp-registry.json",
+        ],
+      },
+    ])
+    expect(store.sessionForTerminal(terminalA)).toBeUndefined()
+    expect(store.sessionForTerminal(terminalB)).toBeUndefined()
   })
 })
 

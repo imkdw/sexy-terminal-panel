@@ -77,6 +77,13 @@ export class TerminalSessionStore<TTerminal> {
     return session
   }
 
+  drainSessions(): readonly TerminalSession<TTerminal>[] {
+    const sessions = this.sessions()
+    this.sessionsByTerminal.clear()
+    this.sessionsById.clear()
+    return sessions
+  }
+
   trackOpenedSession(session: TerminalSession<TTerminal>): TerminalSession<TTerminal> {
     this.sessionsByTerminal.set(session.terminal, session)
     this.sessionsById.set(session.terminalId, session)
