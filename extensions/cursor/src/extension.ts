@@ -22,6 +22,7 @@ const SESSIONS_VIEW_ID = "stp.terminals"
 const NEW_TERMINAL_COMMAND = "stp.newTerminal"
 const SHOW_TERMINAL_COMMAND = "stp.showTerminal"
 const TERMINATE_CURRENT_TERMINAL_COMMAND = "stp.terminateCurrentTerminal"
+const ZOMBIE_CLEANUP_INTERVAL_MS = 5_000
 
 type ActiveExtension = Readonly<{
   sessions: TerminalSessionStore<vscode.Terminal>
@@ -90,6 +91,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     treeProvider,
   )
+  scheduleZombieRegistryCleanup(context, treeProvider)
   void cleanupZombieRegistry(treeProvider)
 }
 
@@ -199,15 +201,44 @@ function currentTerminalProfileConfig(): StpTerminalProfileConfiguration {
 async function cleanupZombieRegistry(
   treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
 ): Promise<void> {
-  const result = await cleanupZombieSessions({
-    binaryPath: currentBinaryPath(),
-    registryPath: currentRegistryPath(),
-    runner: { run: runStpCommand },
-  })
-  if (result.kind === "failed") {
-    await vscode.window.showErrorMessage(`Failed to cleanup zombie STP sessions: ${result.message}`)
+  try {
+    const result = await cleanupZombieSessions({
+      binaryPath: currentBinaryPath(),
+      registryPath: currentRegistryPath(),
+      runner: { run: runStpCommand },
+    })
+    if (result.kind === "failed") {
+      await vscode.window.showErrorMessage(
+        `Failed to cleanup zombie STP sessions: ${result.message}`,
+      )
+    }
+  } catch (error) {
+    await vscode.window.showErrorMessage(
+      `Failed to cleanup zombie STP sessions: ${errorMessage(error)}`,
+    )
   }
   treeProvider.refresh()
+}
+
+function scheduleZombieRegistryCleanup(
+  context: vscode.ExtensionContext,
+  treeProvider: StpTerminalTreeProvider<vscode.Terminal>,
+): void {
+  let cleanupInFlight = false
+  const timer = setInterval(() => {
+    if (cleanupInFlight) {
+      return
+    }
+    cleanupInFlight = true
+    void cleanupZombieRegistry(treeProvider).finally(() => {
+      cleanupInFlight = false
+    })
+  }, ZOMBIE_CLEANUP_INTERVAL_MS)
+  context.subscriptions.push({
+    dispose() {
+      clearInterval(timer)
+    },
+  })
 }
 
 function terminalCreationName(terminal: vscode.Terminal): string | undefined {
@@ -215,4 +246,8 @@ function terminalCreationName(terminal: vscode.Terminal): string | undefined {
   return "name" in creationOptions && typeof creationOptions.name === "string"
     ? creationOptions.name
     : undefined
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
