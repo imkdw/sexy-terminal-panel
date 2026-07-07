@@ -112,11 +112,11 @@ fn broker_detach_preserves_session_until_terminate() {
             terminal_id: fixture.terminal_id.clone(),
         })
         .expect("terminate");
-    assert_eq!(fixture.session_status(), "exited");
+    assert!(!fixture.session_is_listed());
 }
 
 #[test]
-fn broker_terminate_marks_registry_exited_and_stops_child() {
+fn broker_terminate_marks_registry_exited_stops_child_and_removes_session_from_list() {
     let fixture = BrokerFixture::start("00000000-0000-0000-0000-000000000706");
     let spawned = fixture.spawn();
     let mut client = fixture.client();
@@ -134,8 +134,18 @@ fn broker_terminate_marks_registry_exited_and_stops_child() {
         .terminal(&fixture.terminal_id)
         .expect("registered terminal");
     assert_eq!(terminal.status, TerminalStatus::Exited);
-    assert_eq!(fixture.session_status(), "exited");
+    assert!(!fixture.session_is_listed());
     assert_process_exited(spawned.process_id.expect("spawn pid"));
+}
+
+#[test]
+fn broker_removes_session_from_list_when_shell_exits() {
+    let fixture = BrokerFixture::start("00000000-0000-0000-0000-000000000707");
+    fixture.spawn();
+
+    fixture.input("exit\n");
+
+    assert_session_removed_from_list(&fixture);
 }
 
 struct BrokerFixture {
@@ -229,6 +239,14 @@ impl BrokerFixture {
     }
 
     fn session_status(&self) -> String {
+        self.listed_session_status().unwrap_or_default()
+    }
+
+    fn session_is_listed(&self) -> bool {
+        self.listed_session_status().is_some()
+    }
+
+    fn listed_session_status(&self) -> Option<String> {
         let mut client = self.client();
         let event = client.request(&ClientRequest::List).expect("list");
         assert!(
@@ -239,8 +257,8 @@ impl BrokerFixture {
             ServerEvent::SessionList { sessions } => sessions
                 .into_iter()
                 .find(|session| session.terminal_id == self.terminal_id)
-                .map_or_else(String::new, |session| session.status),
-            _ => String::new(),
+                .map(|session| session.status),
+            _ => None,
         }
     }
 }
@@ -278,6 +296,16 @@ fn assert_process_exited(pid: u32) {
         std::thread::sleep(Duration::from_millis(50));
     }
     assert!(!process_exists(pid), "process {pid} still exists");
+}
+
+fn assert_session_removed_from_list(fixture: &BrokerFixture) {
+    for _ in 0..20 {
+        if !fixture.session_is_listed() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!fixture.session_is_listed(), "session still listed after exit");
 }
 
 fn process_exists(pid: u32) -> bool {

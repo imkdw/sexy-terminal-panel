@@ -162,7 +162,7 @@ impl BrokerState {
 
     fn terminate(&self, terminal_id: &TerminalId) -> Result<ServerEvent, BrokerError> {
         self.session(terminal_id)?.terminate()?;
-        self.update_registry_status(terminal_id, TerminalStatus::Exited)?;
+        self.remove_exited_sessions(std::slice::from_ref(terminal_id))?;
         Ok(ServerEvent::Ack {
             message: "terminated".to_owned(),
         })
@@ -183,10 +183,37 @@ impl BrokerState {
     }
 
     fn session_summaries(&self) -> Result<Vec<SessionSummary>, BrokerError> {
-        lock(&self.sessions, "sessions")?
-            .values()
-            .map(|session| session.summary())
-            .collect()
+        let sessions = lock(&self.sessions, "sessions")?;
+        let mut summaries = Vec::with_capacity(sessions.len());
+        let mut exited = Vec::new();
+        for (terminal_id, session) in sessions.iter() {
+            let status = session.status()?;
+            if status == TerminalStatus::Exited {
+                exited.push(terminal_id.clone());
+                continue;
+            }
+            summaries.push(SessionSummary {
+                terminal_id: terminal_id.clone(),
+                status: status_label(status),
+            });
+        }
+        drop(sessions);
+        self.remove_exited_sessions(&exited)?;
+        Ok(summaries)
+    }
+
+    fn remove_exited_sessions(&self, terminal_ids: &[TerminalId]) -> Result<(), BrokerError> {
+        if terminal_ids.is_empty() {
+            return Ok(());
+        }
+        for terminal_id in terminal_ids {
+            self.update_registry_status(terminal_id, TerminalStatus::Exited)?;
+        }
+        let mut sessions = lock(&self.sessions, "sessions")?;
+        for terminal_id in terminal_ids {
+            sessions.remove(terminal_id);
+        }
+        Ok(())
     }
 
     fn update_registry_status(
