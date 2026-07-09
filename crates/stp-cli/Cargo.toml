@@ -12,6 +12,7 @@ serde_json.workspace = true
 stp-core.workspace = true
 stp-pty.workspace = true
 stp-tmux.workspace = true
+unicode-width.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

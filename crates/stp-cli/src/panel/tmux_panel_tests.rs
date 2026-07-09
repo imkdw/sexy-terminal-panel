@@ -22,6 +22,7 @@ fn pane_commands_attach_registered_terminal_sessions() {
     assert!(commands[0].contains("env -u TMUX tmux -L 'stp-test-socket'"));
     assert!(commands[0].contains("attach-session -t 'stp-test-session'"));
     assert!(commands[1].contains("slot 2: <empty>"));
+    assert!(commands[1].contains("click it in the sidebar"));
 }
 
 #[test]

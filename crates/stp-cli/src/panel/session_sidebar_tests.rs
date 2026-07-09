@@ -4,10 +4,11 @@ use std::path::PathBuf;
 
 use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
 use stp_core::registry::{ManagedTerminal, Registry, TerminalBackend, TerminalStatus};
+use unicode_width::UnicodeWidthStr;
 
-use super::session_sidebar::{WIDTH, command, mouse_binding, terminal_for_mouse_line, text};
-
-const HEADER_LINES: usize = 3;
+use super::session_sidebar::{
+    WIDTH, command, mouse_binding, terminal_for_mouse_line, text,
+};
 
 #[test]
 fn sidebar_rows_include_all_live_sessions_in_registry_order() {
@@ -93,10 +94,24 @@ fn command_renders_session_rows_when_live_sessions_exist() {
     let rendered = command(&registry);
 
     assert!(rendered.contains("STP sessions"));
-    assert!(rendered.contains("Click a session"));
+    assert!(rendered.contains("2 live sessions"));
+    assert!(rendered.contains("Click row to focus/open"));
+    assert!(rendered.contains("q quit panel"));
+    assert!(rendered.contains("prefix K terminate focused"));
     assert!(rendered.contains("1 00000000 worktree-a main"));
     assert!(rendered.contains("2 00000000 worktree-b feature/sidebar"));
     assert!(rendered.contains(concat!("exec $", "{SHELL:-sh}")));
+}
+
+#[test]
+fn sidebar_empty_state_shows_next_action() {
+    let registry = Registry::default();
+
+    let rendered = text(&registry);
+
+    assert!(rendered.contains("0 live sessions"));
+    assert!(rendered.contains("No live STP sessions"));
+    assert!(rendered.contains("Open STP terminal in Cursor"));
 }
 
 #[test]
@@ -154,8 +169,44 @@ fn sidebar_rows_do_not_exceed_width() {
 
     let rendered = text(&registry);
 
-    for line in rendered.lines().skip(HEADER_LINES) {
-        assert!(line.chars().count() <= WIDTH, "{line}");
+    for line in rendered.lines() {
+        assert!(UnicodeWidthStr::width(line) <= WIDTH, "{line}");
+    }
+}
+
+#[test]
+fn sidebar_rows_with_wide_characters_do_not_exceed_width() {
+    let terminal = terminal(
+        "00000000-0000-0000-0000-000000000101",
+        "/tmp/터미널패널터미널패널터미널패널",
+        "기능/사이드바-클릭-흐름",
+    );
+    let registry = Registry {
+        terminals: vec![terminal],
+    };
+
+    let rendered = text(&registry);
+
+    for line in rendered.lines() {
+        assert!(UnicodeWidthStr::width(line) <= WIDTH, "{line}");
+    }
+}
+
+#[test]
+fn sidebar_rows_with_symbol_wide_characters_do_not_exceed_width() {
+    let terminal = terminal(
+        "00000000-0000-0000-0000-000000000101",
+        "/tmp/watch-watch-watch",
+        "feature/⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚⌚",
+    );
+    let registry = Registry {
+        terminals: vec![terminal],
+    };
+
+    let rendered = text(&registry);
+
+    for line in rendered.lines() {
+        assert!(UnicodeWidthStr::width(line) <= WIDTH, "{line}");
     }
 }
 
@@ -205,10 +256,18 @@ fn sidebar_mouse_line_uses_tmux_coordinates_after_header() {
     assert!(terminal_for_mouse_line(&registry, "0").is_none());
     assert!(terminal_for_mouse_line(&registry, "1").is_none());
     assert!(terminal_for_mouse_line(&registry, "2").is_none());
+    assert!(terminal_for_mouse_line(&registry, "3").is_none());
+    assert!(terminal_for_mouse_line(&registry, "4").is_none());
+    assert!(terminal_for_mouse_line(&registry, "5").is_none());
     assert!(terminal_for_mouse_line(&registry, "").is_none());
     assert!(terminal_for_mouse_line(&registry, "999999").is_none());
-    let selected = terminal_for_mouse_line(&registry, "4").expect("second terminal");
+    let first_selected = terminal_for_mouse_line(&registry, "6").expect("first terminal");
+    let selected = terminal_for_mouse_line(&registry, "7").expect("second terminal");
 
+    assert_eq!(
+        first_selected.terminal_id,
+        TerminalId::parse("00000000-0000-0000-0000-000000000101").expect("id")
+    );
     assert_eq!(
         selected.terminal_id,
         TerminalId::parse("00000000-0000-0000-0000-000000000102").expect("id")

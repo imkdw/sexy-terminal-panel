@@ -52,7 +52,9 @@ fn render_once_shows_session_list_and_right_grid_preview() {
     let rendered = render_once(&registry, Layout::ThreeByThree).expect("render");
 
     assert!(rendered.contains("STP sessions"));
-    assert!(rendered.contains("Click a session"));
+    assert!(rendered.contains("1 live session"));
+    assert!(rendered.contains("Click row to focus/open"));
+    assert!(rendered.contains("q quit panel"));
     assert!(rendered.contains("1 00000000 worktree-a feature/sidebar"));
     assert!(rendered.contains("STP panel\nLayout: 3x3 | Focus slot: 1\n"));
     assert!(rendered.contains("|>1: worktree-a"));

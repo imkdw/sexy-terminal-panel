@@ -20,7 +20,7 @@ fn panel_sidebar_click_focuses_visible_session_pane() {
     wait_for_pane_title(&fixture.socket, fixture.terminal_id(2));
     wait_for_active_pane_key(&fixture.socket, fixture.terminal_id(1));
 
-    fixture.panel_select("4");
+    fixture.panel_select("7");
 
     assert_eq!(active_pane_key(&fixture.socket), fixture.terminal_id(2));
     fixture.cleanup();
@@ -34,7 +34,7 @@ fn panel_sidebar_click_opens_overflow_session_in_empty_right_pane() {
     set_pane_key(&fixture.socket, &empty_pane, "empty:2");
     wait_for_pane_title(&fixture.socket, fixture.terminal_id(9));
 
-    fixture.panel_select("12");
+    fixture.panel_select("15");
 
     assert_eq!(active_pane_key(&fixture.socket), fixture.terminal_id(10));
     assert_eq!(
@@ -51,7 +51,7 @@ fn panel_sidebar_click_opens_overflow_session_in_rightmost_pane() {
     fixture.launch();
     wait_for_pane_title(&fixture.socket, fixture.terminal_id(9));
 
-    fixture.panel_select("12");
+    fixture.panel_select("15");
 
     assert_eq!(active_pane_key(&fixture.socket), fixture.terminal_id(10));
     assert!(pane_keys(&fixture.socket).contains(&fixture.terminal_id(10).to_owned()));
@@ -83,7 +83,7 @@ fn panel_sidebar_click_dead_rendered_row_does_not_select_next_session() {
     wait_for_active_pane_key(&fixture.socket, fixture.terminal_id(1));
 
     fixture.kill_terminal_session(1);
-    fixture.panel_select("3");
+    fixture.panel_select("6");
 
     assert_ne!(active_pane_key(&fixture.socket), fixture.terminal_id(2));
     assert!(tmux_messages(&fixture.socket).contains("STP session is no longer live"));

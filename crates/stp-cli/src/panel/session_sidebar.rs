@@ -1,8 +1,9 @@
 use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub(super) const TITLE: &str = "stp-sidebar";
 pub(super) const WIDTH: usize = 44;
-const HEADER_LINES: usize = 3;
+const HEADER_LINES: usize = 6;
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct MouseBinding {
@@ -40,9 +41,19 @@ pub(super) fn mouse_binding(binary: &str, registry_path: &str, socket: &str) -> 
 
 pub(super) fn text(registry: &Registry) -> String {
     let terminals = live_terminals(registry);
-    let mut output = String::from("STP sessions\nClick a session\n\n");
+    let mut output = format!(
+        concat!(
+            "STP sessions\n",
+            "{}\n",
+            "Click row to focus/open\n",
+            "q quit panel\n",
+            "prefix K terminate focused\n\n"
+        ),
+        live_count_label(terminals.len())
+    );
     if terminals.is_empty() {
         output.push_str("No live STP sessions\n");
+        output.push_str("Open STP terminal in Cursor\n");
         return output;
     }
     for (index, terminal) in terminals.iter().enumerate() {
@@ -112,6 +123,13 @@ fn short_terminal_id(terminal: &ManagedTerminal) -> String {
     terminal.terminal_id.to_string().chars().take(8).collect()
 }
 
+fn live_count_label(count: usize) -> String {
+    match count {
+        1 => "1 live session".to_owned(),
+        _ => format!("{count} live sessions"),
+    }
+}
+
 fn display_text(value: &str) -> String {
     value
         .chars()
@@ -120,15 +138,28 @@ fn display_text(value: &str) -> String {
 }
 
 fn fit_line(value: &str) -> String {
-    let char_count = value.chars().count();
-    if char_count <= WIDTH {
+    if terminal_display_width(value) <= WIDTH {
         return value.to_owned();
     }
     if WIDTH <= 3 {
         return ".".repeat(WIDTH);
     }
-    let prefix: String = value.chars().take(WIDTH.saturating_sub(3)).collect();
+    let target_width = WIDTH.saturating_sub(3);
+    let mut current_width = 0;
+    let mut prefix = String::new();
+    for ch in value.chars() {
+        let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if current_width.saturating_add(char_width) > target_width {
+            break;
+        }
+        current_width = current_width.saturating_add(char_width);
+        prefix.push(ch);
+    }
     format!("{prefix}...")
+}
+
+fn terminal_display_width(value: &str) -> usize {
+    UnicodeWidthStr::width(value)
 }
 
 fn shell_quote(value: &str) -> String {

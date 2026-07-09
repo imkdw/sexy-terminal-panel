@@ -181,7 +181,7 @@ fn panel_prefix_k_after_sidebar_click_targets_selected_right_pane() {
             "--socket",
             &socket,
             "--mouse-line",
-            "4",
+            "7",
         ])
         .assert()
         .success();
