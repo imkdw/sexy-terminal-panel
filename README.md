@@ -7,6 +7,7 @@ Sexy Terminal Panel is a macOS-first local tool for keeping Cursor worktree term
 - `stp terminal` registers a workspace terminal and starts or attaches a tmux session.
 - `stp panel` shows a native left session list next to the right content grid
   of managed terminal panes.
+- `stp tui` is an alias for `stp panel` when you want the terminal UI entrypoint.
 - `stp panel` and `stp panel --once` remove live registry entries whose tmux
   sessions are already gone before rendering.
 - The Cursor extension adds an Explorer `STP Terminals` view that lists tracked
@@ -23,7 +24,6 @@ Sexy Terminal Panel is a macOS-first local tool for keeping Cursor worktree term
 - Click a session in the native panel's left list to focus its existing right
   pane. If that session is not visible, the panel opens it in the first empty
   right pane, or replaces the rightmost content pane when the grid is full.
-- `h/j/k/l`, arrows, and `Tab` move panel focus.
 - `stp qa-send-focused` and panel actions route by terminal id, not visual index.
 - `stp open-cursor` opens the registered workspace through `cursor --new-window` or records the deterministic fallback in dry-run mode.
 - Browser/xterm.js terminal control is intentionally not part of the MVP.
@@ -83,11 +83,9 @@ stp-managed
 ## Keymap
 
 - `q`: quit panel only
-- `g`: toggle `3x3`/`2x2`
+- sidebar shows live session count, click action, and the main panel keys
 - left session list click: focus that session, or open it in the first empty
   right-side pane; when the grid is full, replace the rightmost content pane
-- `h/j/k/l` and arrow keys: move focus
-- `Tab`: next cell
 - `prefix K`: confirm and terminate the selected managed terminal from
   `stp panel`
 - Cursor `cmd+shift+backspace`: terminate the focused tracked STP terminal

@@ -1009,19 +1009,20 @@
             <div class="two-column">
               <article class="usage-card">
                 <h3>기본 패널 열기</h3>
-                <p>기본 레이아웃은 2x2입니다. 더 많은 세션을 한 화면에 보려면 3x3으로 실행합니다.</p>
+                <p>기본 레이아웃은 2x2입니다. <span class="inline-code">stp tui</span>는 같은 패널을 여는 짧은 별칭입니다.</p>
                 <div class="command-block">
                   <div class="command-head">
                     <span>panel</span>
-                    <button class="copy-button" type="button" data-copy="stp panel&#10;stp panel --layout 3x3">복사</button>
+                    <button class="copy-button" type="button" data-copy="stp tui&#10;stp panel&#10;stp panel --layout 3x3">복사</button>
                   </div>
-                  <pre><code>stp panel
+                  <pre><code>stp tui
+stp panel
 stp panel --layout 3x3</code></pre>
                 </div>
               </article>
               <article class="usage-card">
                 <h3>왼쪽 세션 목록 클릭</h3>
-                <p>이미 오른쪽에 보이는 세션이면 그 pane으로 focus합니다. 보이지 않는 세션이면 빈 pane에 열고, 그리드가 가득 찼으면 가장 오른쪽 content pane을 교체합니다.</p>
+                <p>사이드바는 live 세션 수와 주요 키를 먼저 보여줍니다. 이미 오른쪽에 보이는 세션이면 그 pane으로 focus하고, 보이지 않는 세션이면 빈 pane에 엽니다.</p>
                 <div class="callout">
                   <h3>패널 종료는 세션 종료가 아닙니다</h3>
                   <p><span class="inline-code">q</span>는 패널만 닫습니다. 실제 관리 터미널 종료는 <span class="inline-code">prefix K</span> 또는 terminate 명령을 사용합니다.</p>
@@ -1040,9 +1041,7 @@ stp panel --layout 3x3</code></pre>
             <div class="usage-card">
               <div class="keymap">
                 <div class="key-row"><span>패널만 닫기</span><kbd>q</kbd></div>
-                <div class="key-row"><span>2x2와 3x3 전환</span><kbd>g</kbd></div>
-                <div class="key-row"><span>패널 focus 이동</span><span><kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd></span></div>
-                <div class="key-row"><span>다음 셀로 이동</span><kbd>Tab</kbd></div>
+                <div class="key-row"><span>사이드바 세션 focus 또는 열기</span><kbd>click</kbd></div>
                 <div class="key-row"><span>선택된 managed terminal 종료</span><span><kbd>prefix</kbd> <kbd>K</kbd></span></div>
                 <div class="key-row"><span>Cursor에서 focused STP 터미널 종료</span><kbd>cmd+shift+backspace</kbd></div>
               </div>
