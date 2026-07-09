@@ -12,6 +12,7 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Terminal(TerminalArgs),
+    #[command(alias = "tui")]
     Panel(PanelArgs),
     #[command(hide = true)]
     PanelSelect(PanelSelectArgs),
