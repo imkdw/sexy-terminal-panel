@@ -91,25 +91,6 @@ fn panel_defaults_to_two_by_two_when_layout_is_omitted() {
 }
 
 #[test]
-fn tui_alias_renders_the_panel() {
-    let temp = TempDir::new().expect("temp dir");
-    let registry = temp.path().join("registry.json");
-
-    Command::cargo_bin("stp")
-        .expect("stp binary")
-        .args([
-            "tui",
-            "--registry",
-            registry.to_str().expect("utf8 registry"),
-            "--once",
-        ])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("STP sessions"))
-        .stdout(predicate::str::contains("Layout: 2x2"));
-}
-
-#[test]
 fn send_focused_routes_to_registered_socket() {
     let temp = TempDir::new().expect("temp dir");
     let workspace = temp.path().join("worktree-routed");

@@ -45,6 +45,10 @@ macro_rules! uuid_id {
                 })
             }
 
+            pub const fn from_uuid(value: Uuid) -> Self {
+                Self(value)
+            }
+
             pub const fn as_uuid(&self) -> &Uuid {
                 &self.0
             }

@@ -8,6 +8,7 @@ mod output;
 mod panel;
 mod session_cleanup;
 mod state;
+mod tui;
 
 use cli::{Cli, Command, RegistrySubcommand};
 
@@ -29,6 +30,7 @@ fn main() -> Result<()> {
                 panel::run_interactive(&store, layout, &args.state.socket)
             }
         }
+        Command::Tui(args) => tui::run(&args),
         Command::PanelSelect(args) => {
             let store = stp_core::registry::RegistryStore::new(state::selected_registry_path(
                 args.state.registry,

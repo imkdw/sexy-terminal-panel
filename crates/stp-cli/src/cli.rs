@@ -12,8 +12,8 @@ pub struct Cli {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     Terminal(TerminalArgs),
-    #[command(alias = "tui")]
     Panel(PanelArgs),
+    Tui(TuiArgs),
     #[command(hide = true)]
     PanelSelect(PanelSelectArgs),
     OpenCursor(OpenCursorArgs),
@@ -58,6 +58,14 @@ pub struct PanelArgs {
     pub layout: String,
     #[arg(long)]
     pub once: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct TuiArgs {
+    #[arg(long, env = "STP_REGISTRY")]
+    pub registry: Option<PathBuf>,
+    #[arg(long, env = "STP_BROKER_SOCKET")]
+    pub broker_socket: Option<PathBuf>,
 }
 
 #[derive(Debug, Args)]
