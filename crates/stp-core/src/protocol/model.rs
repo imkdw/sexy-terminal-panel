@@ -19,6 +19,9 @@ pub enum ClientRequest {
         window_id: WindowId,
         workspace_path: PathBuf,
         shell: Option<String>,
+        /// 지정 시 shell 대신 이 argv 로 PTY 를 띄운다(예: 기존 tmux 세션 attach 래핑).
+        #[serde(default)]
+        command: Option<Vec<String>>,
     },
     Attach {
         terminal_id: TerminalId,

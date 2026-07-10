@@ -11,6 +11,12 @@ use stp_core::ids::TerminalId;
 use super::layout::{Regions, Tile};
 use super::state::{GridKind, PanelState};
 
+mod separators;
+#[cfg(test)]
+mod tests;
+
+use separators::render_separators;
+
 /// pane 본문에 그릴 vt100 화면 조회원. `BrokerLink` 가 구현하고, 테스트는 빈 구현으로 대체.
 pub trait ScreenSource {
     fn screen(&self, id: &TerminalId) -> Option<&vt100::Screen>;
@@ -38,9 +44,7 @@ fn render_sidebar(buf: &mut Buffer, state: &PanelState, regions: &Regions) {
         let Some(entry) = state.sessions.get(index) else {
             continue;
         };
-        let focused = state
-            .focused_terminal()
-            .is_some_and(|id| *id == entry.id);
+        let focused = state.focused_terminal().is_some_and(|id| *id == entry.id);
         let dot = if focused { "◉" } else { "●" };
         let short: String = entry.id.to_string().chars().take(6).collect();
         let label = format!("{dot} {short} {}/{}", entry.workspace, entry.branch);
@@ -100,12 +104,18 @@ fn render_sidebar(buf: &mut Buffer, state: &PanelState, regions: &Regions) {
     );
 }
 
-fn render_grid(frame: &mut Frame, state: &PanelState, regions: &Regions, screens: &dyn ScreenSource) {
+fn render_grid(
+    frame: &mut Frame,
+    state: &PanelState,
+    regions: &Regions,
+    screens: &dyn ScreenSource,
+) {
     for (index, tile) in regions.tiles.iter().enumerate() {
         let focused = state.focus == Some(index);
         render_title(frame.buffer_mut(), state, index, *tile, focused);
         render_body(frame.buffer_mut(), state, index, *tile, screens);
     }
+    render_separators(frame.buffer_mut(), state.grid, regions);
 }
 
 fn render_title(buf: &mut Buffer, state: &PanelState, slot: usize, tile: Tile, focused: bool) {
@@ -236,7 +246,12 @@ fn render_drag_ghost(buf: &mut Buffer, state: &PanelState, regions: &Regions) {
     );
 }
 
-fn place_cursor(frame: &mut Frame, state: &PanelState, regions: &Regions, screens: &dyn ScreenSource) {
+fn place_cursor(
+    frame: &mut Frame,
+    state: &PanelState,
+    regions: &Regions,
+    screens: &dyn ScreenSource,
+) {
     let Some(slot) = state.focus else {
         return;
     };
@@ -255,57 +270,5 @@ fn place_cursor(frame: &mut Frame, state: &PanelState, regions: &Regions, screen
     let (row, col) = screen.cursor_position();
     if col < tile.body.width && row < tile.body.height {
         frame.set_cursor_position(Position::new(tile.body.x + col, tile.body.y + row));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tui::layout;
-    use crate::tui::state::{PanelState, SessionEntry};
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-
-    struct NoScreens;
-    impl ScreenSource for NoScreens {
-        fn screen(&self, _id: &TerminalId) -> Option<&vt100::Screen> {
-            None
-        }
-    }
-
-    fn buffer_text(terminal: &Terminal<TestBackend>) -> String {
-        terminal
-            .backend()
-            .buffer()
-            .content()
-            .iter()
-            .map(ratatui::buffer::Cell::symbol)
-            .collect()
-    }
-
-    #[test]
-    fn sidebar_and_empty_grid_render_chrome() {
-        let mut state = PanelState::new(GridKind::TwoByTwo);
-        state.sessions.push(SessionEntry {
-            id: TerminalId::from_uuid(uuid::Uuid::from_u128(1)),
-            workspace: "worktree-a".to_owned(),
-            branch: "main".to_owned(),
-        });
-        let mut terminal =
-            Terminal::new(TestBackend::new(100, 30)).expect("test backend terminal");
-        terminal
-            .draw(|frame| {
-                let regions = layout::compute(frame.area(), &state);
-                draw(frame, &state, &regions, &NoScreens);
-            })
-            .expect("draw");
-        // 넓은 글자는 다음 셀이 공백으로 채워져 붙지 않으므로, 어설션은 ASCII 크롬 위주로.
-        let text = buffer_text(&terminal);
-        assert!(text.contains("STP sessions"), "sidebar header missing");
-        assert!(text.contains("+ new"), "new button missing");
-        assert!(text.contains("[2x2]"), "grid toggle missing");
-        assert!(text.contains("worktree-a/main"), "session label missing");
-        assert!(text.contains("slot 1"), "empty tile title missing");
-        assert!(text.contains('빈'), "empty slot placeholder missing");
     }
 }

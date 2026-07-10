@@ -61,7 +61,8 @@ impl BrokerState {
                 window_id,
                 workspace_path,
                 shell,
-            } => self.spawn(terminal_id, window_id, &workspace_path, shell),
+                command,
+            } => self.spawn(terminal_id, window_id, &workspace_path, shell, command),
             ClientRequest::Attach { terminal_id } => self.attach(&terminal_id, client_tx),
             ClientRequest::Input {
                 terminal_id,
@@ -106,11 +107,12 @@ impl BrokerState {
         window_id: WindowId,
         workspace_path: &Path,
         shell: Option<String>,
+        command: Option<Vec<String>>,
     ) -> Result<ServerEvent, BrokerError> {
         let endpoint = SessionEndpoint::unix_socket(self.config.socket_path.clone());
         let terminal =
             ManagedTerminal::new_pty(terminal_id.clone(), window_id, workspace_path, endpoint)?;
-        let session = BrokerSession::spawn(terminal_id.clone(), workspace_path, shell)?;
+        let session = BrokerSession::spawn(terminal_id.clone(), workspace_path, shell, command)?;
         let process_id = session.process_id;
         lock(&self.sessions, "sessions")?.insert(terminal_id.clone(), session);
         let store = RegistryStore::new(self.config.registry_path.clone());

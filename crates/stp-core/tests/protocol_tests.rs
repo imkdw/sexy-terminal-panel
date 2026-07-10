@@ -18,6 +18,7 @@ fn protocol_round_trips_spawn_attach_output_and_resize_frames() {
         window_id,
         workspace_path: PathBuf::from("/tmp/worktree-a"),
         shell: Some("sh".to_owned()),
+        command: None,
     };
 
     let decoded_spawn =

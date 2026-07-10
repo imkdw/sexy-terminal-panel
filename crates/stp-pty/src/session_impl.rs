@@ -18,6 +18,7 @@ impl BrokerSession {
         terminal_id: TerminalId,
         workspace_path: &Path,
         shell: Option<String>,
+        command: Option<Vec<String>>,
     ) -> Result<Arc<Self>, BrokerError> {
         let system = native_pty_system();
         let pair = system
@@ -28,7 +29,7 @@ impl BrokerSession {
                 pixel_height: 0,
             })
             .map_err(|source| BrokerError::Pty(source.to_string()))?;
-        let mut command = CommandBuilder::new(shell.unwrap_or_else(default_shell));
+        let mut command = build_command(shell, command);
         command.cwd(workspace_path.as_os_str());
         let child = pair
             .slave
@@ -196,4 +197,16 @@ fn limited_lines(text: String, lines: Option<u16>) -> String {
 
 fn default_shell() -> String {
     std::env::var("SHELL").unwrap_or_else(|_| "sh".to_owned())
+}
+
+/// command(argv) 가 있으면 그걸로, 없으면 shell 로 PTY 명령을 만든다.
+fn build_command(shell: Option<String>, command: Option<Vec<String>>) -> CommandBuilder {
+    match command {
+        Some(argv) if !argv.is_empty() => {
+            let mut builder = CommandBuilder::new(&argv[0]);
+            builder.args(&argv[1..]);
+            builder
+        }
+        _ => CommandBuilder::new(shell.unwrap_or_else(default_shell)),
+    }
 }

@@ -64,6 +64,7 @@ fn spawn(args: BrokerSpawnArgs) -> Result<()> {
         window_id,
         workspace_path: args.workspace,
         shell: args.shell,
+        command: None,
     })? {
         ServerEvent::Spawned {
             terminal_id,

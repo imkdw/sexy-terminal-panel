@@ -54,6 +54,7 @@ impl BrokerFixture {
                 window_id: self.window_id.clone(),
                 workspace_path: self.temp.path().join("workspace"),
                 shell: Some("sh".to_owned()),
+                command: None,
             })
             .expect("spawn");
         assert!(

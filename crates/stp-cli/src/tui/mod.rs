@@ -18,7 +18,7 @@ use ratatui::crossterm::event::{
 use ratatui::crossterm::execute;
 use ratatui::layout::Rect;
 use stp_core::ids::{TerminalId, WindowId};
-use stp_core::registry::{RegistryStore, TerminalStatus};
+use stp_core::registry::{ManagedTerminal, RegistryStore, TerminalBackend, TerminalStatus};
 
 use crate::cli::TuiArgs;
 use crate::state::{selected_broker_socket_path, selected_registry_path};
@@ -41,9 +41,14 @@ pub fn run(args: &TuiArgs) -> Result<()> {
 
     let mut terminal = ratatui::try_init().context("failed to enter raw mode")?;
     let _ = execute!(io::stdout(), EnableMouseCapture);
-    let result = event_loop(&mut terminal, &mut link, &mut state, &registry_path);
+    let result = event_loop(&mut terminal, &mut link, &mut state);
     let _ = execute!(io::stdout(), DisableMouseCapture);
     let _ = ratatui::try_restore();
+    // 패널이 띄운 broker PTY 정리. 브리지는 tmux 세션을 detach 만 하고(세션 생존),
+    // + new 로 만든 셸은 종료된다.
+    for entry in &state.sessions {
+        let _ = link.terminate(&entry.id);
+    }
     result
 }
 
@@ -58,31 +63,65 @@ fn ensure_broker(registry_path: &std::path::Path, socket: &std::path::Path) -> R
     Ok(())
 }
 
-/// 시작 시 broker 가 아는 라이브 세션을 사이드바에 채우고 event 연결에 Attach.
+/// 시작 시 registry 의 live tmux 세션을 각각 broker PTY(`tmux attach` 래핑)로 브리지해
+/// 사이드바에 채우고 event 연결에 Attach. broker 자체 PTY 세션이 아니라 tmux 가 진실원.
 fn seed_sessions(
     link: &mut BrokerLink,
     state: &mut PanelState,
     registry_path: &std::path::Path,
 ) -> Result<()> {
-    let summaries = link.list_sessions()?;
     let store = RegistryStore::new(registry_path.to_path_buf());
-    let registry = store.load().ok();
-    for summary in summaries {
-        let entry = registry
-            .as_ref()
-            .and_then(|reg| entry_from_registry(reg, &summary.terminal_id))
-            .unwrap_or_else(|| fallback_entry(&summary.terminal_id));
-        link.attach(&entry.id)?;
-        state.add_session(entry);
+    let Ok(registry) = store.load() else {
+        return Ok(());
+    };
+    for terminal in &registry.terminals {
+        if terminal.status != TerminalStatus::Live {
+            continue;
+        }
+        let TerminalBackend::LegacyTmux { socket, session, .. } = &terminal.backend else {
+            continue; // Pty 백엔드(브리지 잔여 등)는 건너뜀
+        };
+        let bridge_id = TerminalId::from_uuid(uuid::Uuid::new_v4());
+        let window_id = WindowId::from_uuid(uuid::Uuid::new_v4());
+        let argv = tmux_attach_argv(socket, session);
+        if link
+            .spawn(
+                &bridge_id,
+                &window_id,
+                terminal.workspace_path.clone(),
+                None,
+                Some(argv),
+            )
+            .is_err()
+        {
+            continue;
+        }
+        link.attach(&bridge_id)?;
+        let (workspace, branch) = labels(terminal);
+        state.add_session(SessionEntry {
+            id: bridge_id,
+            workspace,
+            branch,
+        });
     }
     Ok(())
+}
+
+/// 기존 tmux 세션에 붙는 PTY 명령. `|| exec` 로 tmux 종료 시 셸로 폴백.
+fn tmux_attach_argv(socket: &str, session: &str) -> Vec<String> {
+    vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        format!(
+            "env -u TMUX tmux -L {socket} attach-session -t {session} || exec ${{SHELL:-sh}}"
+        ),
+    ]
 }
 
 fn event_loop(
     terminal: &mut ratatui::DefaultTerminal,
     link: &mut BrokerLink,
     state: &mut PanelState,
-    registry_path: &std::path::Path,
 ) -> Result<()> {
     let mut resized: HashMap<TerminalId, (u16, u16)> = HashMap::new();
     let mut last_mouse = (0_u16, 0_u16);
@@ -112,7 +151,7 @@ fn event_loop(
                 last_mouse = (*column, *row);
             }
             let action = input::map(&event, &regions, state);
-            if apply_action(action, link, state, registry_path, last_mouse)? {
+            if apply_action(action, link, state, last_mouse)? {
                 return Ok(());
             }
         }
@@ -150,7 +189,6 @@ fn apply_action(
     action: Action,
     link: &mut BrokerLink,
     state: &mut PanelState,
-    registry_path: &std::path::Path,
     last_mouse: (u16, u16),
 ) -> Result<bool> {
     match action {
@@ -168,7 +206,7 @@ fn apply_action(
                 state.remove_session(&id);
             }
         }
-        Action::Spawn => spawn_session(link, state, registry_path)?,
+        Action::Spawn => spawn_session(link, state)?,
         Action::SetGrid(kind) => state.set_grid(kind),
         Action::DragStart(slot) => {
             state.drag = Some(Drag {
@@ -197,34 +235,27 @@ fn apply_action(
     Ok(false)
 }
 
-fn spawn_session(
-    link: &mut BrokerLink,
-    state: &mut PanelState,
-    registry_path: &std::path::Path,
-) -> Result<()> {
+fn spawn_session(link: &mut BrokerLink, state: &mut PanelState) -> Result<()> {
     let terminal_id = TerminalId::from_uuid(uuid::Uuid::new_v4());
     let window_id = WindowId::from_uuid(uuid::Uuid::new_v4());
     let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    link.spawn(&terminal_id, &window_id, workspace, None)?;
-    let store = RegistryStore::new(registry_path.to_path_buf());
-    let entry = store
-        .load()
-        .ok()
-        .and_then(|reg| entry_from_registry(&reg, &terminal_id))
-        .unwrap_or_else(|| fallback_entry(&terminal_id));
+    let workspace_name = workspace
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("workspace")
+        .to_owned();
+    link.spawn(&terminal_id, &window_id, workspace, None, None)?;
     link.attach(&terminal_id)?;
-    state.add_session(entry);
+    state.add_session(SessionEntry {
+        id: terminal_id,
+        workspace: workspace_name,
+        branch: "shell".to_owned(),
+    });
     Ok(())
 }
 
-fn entry_from_registry(
-    registry: &stp_core::registry::Registry,
-    id: &TerminalId,
-) -> Option<SessionEntry> {
-    let terminal = registry
-        .terminals
-        .iter()
-        .find(|terminal| terminal.terminal_id == *id && terminal.status != TerminalStatus::Exited)?;
+/// `ManagedTerminal` 에서 사이드바 라벨(workspace, branch) 추출.
+fn labels(terminal: &ManagedTerminal) -> (String, String) {
     let workspace = terminal
         .workspace_path
         .file_name()
@@ -235,18 +266,6 @@ fn entry_from_registry(
         .branch_name
         .clone()
         .unwrap_or_else(|| "non-git".to_owned());
-    Some(SessionEntry {
-        id: id.clone(),
-        workspace,
-        branch,
-    })
-}
-
-fn fallback_entry(id: &TerminalId) -> SessionEntry {
-    SessionEntry {
-        id: id.clone(),
-        workspace: id.to_string().chars().take(8).collect(),
-        branch: "?".to_owned(),
-    }
+    (workspace, branch)
 }
 

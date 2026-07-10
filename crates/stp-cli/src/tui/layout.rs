@@ -8,6 +8,7 @@ pub const SIDEBAR_WIDTH: u16 = 30;
 const HEADER_HEIGHT: u16 = 1;
 const FOOTER_HEIGHT: u16 = 4;
 const CLOSE_WIDTH: u16 = 3; // "[x]"
+const TILE_GAP: u16 = 1;
 
 /// pane 타일 하나: 전체 칸 / 제목바(드래그 핸들) / 본문(터미널).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -114,12 +115,16 @@ fn tiles(content: Rect, grid: GridKind) -> Vec<Tile> {
     if content.width == 0 || content.height == 0 {
         return out;
     }
-    let cell_w = content.width / cols;
-    let cell_h = content.height / grid_rows;
+    let gap_width = cols.saturating_sub(1).saturating_mul(TILE_GAP);
+    let gap_height = grid_rows.saturating_sub(1).saturating_mul(TILE_GAP);
+    let tile_area_width = content.width.saturating_sub(gap_width);
+    let tile_area_height = content.height.saturating_sub(gap_height);
+    let cell_w = tile_area_width / cols;
+    let cell_h = tile_area_height / grid_rows;
     for row in 0..grid_rows {
         for col in 0..cols {
-            let x = content.x + col * cell_w;
-            let y = content.y + row * cell_h;
+            let x = content.x + col * (cell_w + TILE_GAP);
+            let y = content.y + row * (cell_h + TILE_GAP);
             // 마지막 열/행은 나머지 픽셀을 흡수.
             let w = if col + 1 == cols {
                 content.right().saturating_sub(x)
@@ -202,7 +207,10 @@ mod tests {
         let close = regions.close_buttons[0];
         assert_eq!(regions.hit(close.x, close.y), Hit::CloseButton(0));
         // 행 본문(닫기 왼쪽)은 SessionRow
-        assert_eq!(regions.hit(regions.sidebar.x + 2, close.y), Hit::SessionRow(0));
+        assert_eq!(
+            regions.hit(regions.sidebar.x + 2, close.y),
+            Hit::SessionRow(0)
+        );
     }
 
     #[test]

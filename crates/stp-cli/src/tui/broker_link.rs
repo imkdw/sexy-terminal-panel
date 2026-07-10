@@ -10,9 +10,7 @@ use std::thread::{self, JoinHandle};
 
 use anyhow::{Context, Result, anyhow};
 use stp_core::ids::{TerminalId, WindowId};
-use stp_core::protocol::{
-    ClientRequest, ServerEvent, SessionSummary, decode_server_frame, encode_client_frame,
-};
+use stp_core::protocol::{ClientRequest, ServerEvent, decode_server_frame, encode_client_frame};
 use stp_pty::BrokerClient;
 
 const SCROLLBACK_LINES: usize = 2_000;
@@ -61,13 +59,6 @@ impl BrokerLink {
         })
     }
 
-    pub fn list_sessions(&mut self) -> Result<Vec<SessionSummary>> {
-        match self.control.request(&ClientRequest::List)? {
-            ServerEvent::SessionList { sessions } => Ok(sessions),
-            event => Err(anyhow!("unexpected broker event: {event:?}")),
-        }
-    }
-
     /// event 연결에 Attach 전송. Snapshot/Output 은 reader thread 로 돌아온다.
     pub fn attach(&mut self, terminal_id: &TerminalId) -> Result<()> {
         self.send_event(&ClientRequest::Attach {
@@ -99,12 +90,14 @@ impl BrokerLink {
         window_id: &WindowId,
         workspace_path: PathBuf,
         shell: Option<String>,
+        command: Option<Vec<String>>,
     ) -> Result<()> {
         match self.control.request(&ClientRequest::Spawn {
             terminal_id: terminal_id.clone(),
             window_id: window_id.clone(),
             workspace_path,
             shell,
+            command,
         })? {
             ServerEvent::Spawned { .. } => Ok(()),
             event => Err(anyhow!("spawn failed: {event:?}")),
