@@ -492,6 +492,7 @@ var SESSIONS_VIEW_ID = "stp.terminals";
 var NEW_TERMINAL_COMMAND = "stp.newTerminal";
 var SHOW_TERMINAL_COMMAND = "stp.showTerminal";
 var TERMINATE_CURRENT_TERMINAL_COMMAND = "stp.terminateCurrentTerminal";
+var ZOMBIE_CLEANUP_INTERVAL_MS = 5000;
 var activeExtension;
 function activate(context) {
   const sessions = new TerminalSessionStore;
@@ -533,6 +534,7 @@ function activate(context) {
       treeProvider.refresh();
     }
   }), treeProvider);
+  scheduleZombieRegistryCleanup(context, treeProvider);
   cleanupZombieRegistry(treeProvider);
 }
 async function deactivate() {
@@ -613,19 +615,43 @@ function currentTerminalProfileConfig() {
   };
 }
 async function cleanupZombieRegistry(treeProvider) {
-  const result = await cleanupZombieSessions({
-    binaryPath: currentBinaryPath(),
-    registryPath: currentRegistryPath(),
-    runner: { run: runStpCommand }
-  });
-  if (result.kind === "failed") {
-    await vscode4.window.showErrorMessage(`Failed to cleanup zombie STP sessions: ${result.message}`);
+  try {
+    const result = await cleanupZombieSessions({
+      binaryPath: currentBinaryPath(),
+      registryPath: currentRegistryPath(),
+      runner: { run: runStpCommand }
+    });
+    if (result.kind === "failed") {
+      await vscode4.window.showErrorMessage(`Failed to cleanup zombie STP sessions: ${result.message}`);
+    }
+  } catch (error) {
+    await vscode4.window.showErrorMessage(`Failed to cleanup zombie STP sessions: ${errorMessage(error)}`);
   }
   treeProvider.refresh();
+}
+function scheduleZombieRegistryCleanup(context, treeProvider) {
+  let cleanupInFlight = false;
+  const timer = setInterval(() => {
+    if (cleanupInFlight) {
+      return;
+    }
+    cleanupInFlight = true;
+    cleanupZombieRegistry(treeProvider).finally(() => {
+      cleanupInFlight = false;
+    });
+  }, ZOMBIE_CLEANUP_INTERVAL_MS);
+  context.subscriptions.push({
+    dispose() {
+      clearInterval(timer);
+    }
+  });
 }
 function terminalCreationName(terminal) {
   const { creationOptions } = terminal;
   return "name" in creationOptions && typeof creationOptions.name === "string" ? creationOptions.name : undefined;
+}
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 export {
   deactivate,
