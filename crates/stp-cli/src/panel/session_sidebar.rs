@@ -145,7 +145,7 @@ fn fit_line(value: &str) -> String {
         return ".".repeat(WIDTH);
     }
     let target_width = WIDTH.saturating_sub(3);
-    let mut current_width = 0;
+    let mut current_width: usize = 0;
     let mut prefix = String::new();
     for ch in value.chars() {
         let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
