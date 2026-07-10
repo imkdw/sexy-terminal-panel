@@ -2,7 +2,7 @@ use stp_core::registry::{ManagedTerminal, Registry, TerminalStatus};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub(super) const TITLE: &str = "stp-sidebar";
-pub(super) const WIDTH: usize = 44;
+pub(super) const WIDTH: usize = 30;
 const HEADER_LINES: usize = 6;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -45,9 +45,9 @@ pub(super) fn text(registry: &Registry) -> String {
         concat!(
             "STP sessions\n",
             "{}\n",
-            "Click row to focus/open\n",
+            "click row open\n",
             "q quit panel\n",
-            "prefix K terminate focused\n\n"
+            "prefix+K kill\n\n"
         ),
         live_count_label(terminals.len())
     );

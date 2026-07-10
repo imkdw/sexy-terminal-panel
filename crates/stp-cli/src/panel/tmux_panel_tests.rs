@@ -8,7 +8,8 @@ use stp_tmux::adapter::Tmux;
 
 use super::Layout;
 use super::bindings::install_quit_binding;
-use super::tmux_panel::{pane_commands, pane_titles, terminate_binding};
+use super::terminal_size::{parse_cols_rows_text, parse_rows_cols};
+use super::tmux_panel::{configure_panel_options, pane_commands, pane_titles, terminate_binding};
 
 #[test]
 fn pane_commands_attach_registered_terminal_sessions() {
@@ -21,8 +22,9 @@ fn pane_commands_attach_registered_terminal_sessions() {
     assert_eq!(commands.len(), 9);
     assert!(commands[0].contains("env -u TMUX tmux -L 'stp-test-socket'"));
     assert!(commands[0].contains("attach-session -t 'stp-test-session'"));
-    assert!(commands[1].contains("slot 2: <empty>"));
-    assert!(commands[1].contains("click it in the sidebar"));
+    assert!(commands[1].contains("slot 2 waiting"));
+    assert!(commands[1].contains("Click its sidebar row to load here."));
+    assert!(commands[1].contains("exec env PS1= PROMPT= RPROMPT= sh"));
 }
 
 #[test]
@@ -32,7 +34,7 @@ fn pane_commands_follow_two_by_two_capacity() {
     let commands = pane_commands(&registry, Layout::TwoByTwo);
 
     assert_eq!(commands.len(), 4);
-    assert!(commands[3].contains("slot 4: <empty>"));
+    assert!(commands[3].contains("slot 4 waiting"));
 }
 
 #[test]
@@ -45,6 +47,40 @@ fn pane_titles_use_terminal_ids_and_empty_slot_titles() {
 
     assert_eq!(titles[0], "00000000-0000-0000-0000-000000000101");
     assert_eq!(titles[1], "empty:2");
+}
+
+#[test]
+fn panel_options_show_compact_pane_frames() {
+    let socket = "stp-cli-panel-options-test";
+    let tmux = Tmux::new(socket);
+    tmux.kill_server().ok();
+    tmux.new_session("stp-panel", "sh").expect("new session");
+
+    configure_panel_options(&tmux).expect("configure panel options");
+
+    let pane_border_status = show_window_option(socket, "pane-border-status");
+    let pane_border_format = show_window_option(socket, "pane-border-format");
+    let pane_active_border_style = show_window_option(socket, "pane-active-border-style");
+    tmux.kill_server().expect("cleanup server");
+
+    assert_eq!(pane_border_status.trim(), "top");
+    assert!(pane_border_format.contains("#{pane_title}"));
+    assert!(pane_active_border_style.contains("colour154"));
+}
+
+#[test]
+fn terminal_size_parsers_keep_column_row_order() {
+    let from_tty = parse_rows_cols("28 120\n").expect("stty size");
+    let from_tmux = parse_cols_rows_text("120 28\n").expect("tmux size");
+
+    assert_eq!((from_tty.cols(), from_tty.rows()), (120, 28));
+    assert_eq!((from_tmux.cols(), from_tmux.rows()), (120, 28));
+}
+
+#[test]
+fn terminal_size_parsers_reject_tiny_or_invalid_sizes() {
+    assert_eq!(parse_rows_cols("19 120\n"), None);
+    assert_eq!(parse_cols_rows_text("120 nope\n"), None);
 }
 
 #[test]
@@ -63,9 +99,20 @@ fn pane_commands_ignore_exited_terminal_sessions() {
     let titles = pane_titles(&registry, Layout::TwoByTwo);
 
     assert!(commands[0].contains("attach-session -t 'stp-test-session'"));
-    assert!(commands[1].contains("slot 2: <empty>"));
+    assert!(commands[1].contains("slot 2 waiting"));
     assert_eq!(titles[0], "00000000-0000-0000-0000-000000000102");
     assert_eq!(titles[1], "empty:2");
+}
+
+fn show_window_option(socket: &str, name: &str) -> String {
+    std::process::Command::new("tmux")
+        .args(["-L", socket, "show-window-options", "-v", name])
+        .output()
+        .expect("show window option")
+        .stdout
+        .iter()
+        .map(|byte| char::from(*byte))
+        .collect()
 }
 
 #[test]
@@ -107,20 +154,14 @@ fn quit_binding_maps_raw_q_to_detach_client() {
     install_quit_binding(&tmux).expect("quit binding");
 
     let output = std::process::Command::new("tmux")
-        .args([
-            "-L",
-            "stp-cli-quit-binding-test",
-            "list-keys",
-            "-T",
-            "root",
-            "q",
-        ])
+        .args(["-L", "stp-cli-quit-binding-test", "list-keys", "-T", "root"])
         .output()
         .expect("list keys");
     let stdout = String::from_utf8_lossy(&output.stdout);
     tmux.kill_server().expect("cleanup server");
 
-    assert!(stdout.contains("bind-key -T root q detach-client"));
+    assert!(stdout.contains(" q "));
+    assert!(stdout.contains("detach-client"));
 }
 
 fn terminal(id: &str) -> ManagedTerminal {

@@ -73,7 +73,6 @@ fn bind_key_registers_prefix_binding() {
             "list-keys",
             "-T",
             "prefix",
-            "K",
         ])
         .output()
         .expect("list keys");
@@ -106,7 +105,6 @@ fn bind_key_in_table_registers_root_mouse_binding() {
             "list-keys",
             "-T",
             "root",
-            "MouseDown1Pane",
         ])
         .output()
         .expect("list keys");

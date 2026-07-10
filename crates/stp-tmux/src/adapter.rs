@@ -1,6 +1,7 @@
 pub use crate::binding::BindingCommand;
 pub use crate::error::{TmuxError, TmuxOutput};
 pub use crate::pane::PaneInfo;
+pub use crate::session::{TmuxWaitForLock, TmuxWindowSession, TmuxWindowSize};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Tmux {
@@ -17,24 +18,6 @@ impl Tmux {
     pub fn new_session(&self, session_name: &str, shell_command: &str) -> Result<(), TmuxError> {
         self.run(["new-session", "-d", "-s", session_name, shell_command])
             .map(drop)
-    }
-
-    pub fn new_session_with_window(
-        &self,
-        session_name: &str,
-        window_name: &str,
-        shell_command: &str,
-    ) -> Result<(), TmuxError> {
-        self.run([
-            "new-session",
-            "-d",
-            "-s",
-            session_name,
-            "-n",
-            window_name,
-            shell_command,
-        ])
-        .map(drop)
     }
 
     pub fn attach_session(&self, session_name: &str) -> Result<(), TmuxError> {

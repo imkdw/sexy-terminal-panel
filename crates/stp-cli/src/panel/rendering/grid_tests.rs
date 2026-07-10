@@ -45,7 +45,7 @@ fn render_once_shows_session_list_and_right_grid_preview() {
         terminals: vec![terminal(
             "00000000-0000-0000-0000-000000000101",
             "worktree-a",
-            "feature/sidebar",
+            "sidebar",
         )],
     };
 
@@ -53,9 +53,9 @@ fn render_once_shows_session_list_and_right_grid_preview() {
 
     assert!(rendered.contains("STP sessions"));
     assert!(rendered.contains("1 live session"));
-    assert!(rendered.contains("Click row to focus/open"));
+    assert!(rendered.contains("click row open"));
     assert!(rendered.contains("q quit panel"));
-    assert!(rendered.contains("1 00000000 worktree-a feature/sidebar"));
+    assert!(rendered.contains("1 00000000 worktree-a sidebar"));
     assert!(rendered.contains("STP panel\nLayout: 3x3 | Focus slot: 1\n"));
     assert!(rendered.contains("|>1: worktree-a"));
 }

@@ -28,11 +28,12 @@ pub fn terminal(args: TerminalArgs) -> Result<()> {
         &args.state.socket,
         &session_name,
     )?;
-    registry.upsert(terminal);
+    registry.upsert(terminal.clone());
     store.save(&registry)?;
 
     let tmux = Tmux::new(&args.state.socket);
     ensure_session(&tmux, &session_name, &args.workspace, args.shell.as_deref())?;
+    crate::panel::connect_registered_terminal(&store, &terminal, &args.state.socket)?;
     if args.detach {
         stdout_line(&format!("registered {session_name}"))?;
         return Ok(());

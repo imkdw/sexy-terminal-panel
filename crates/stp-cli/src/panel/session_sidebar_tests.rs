@@ -1,14 +1,26 @@
 #![allow(clippy::expect_used)]
 
-use std::path::PathBuf;
-
-use stp_core::ids::{TerminalId, WindowId, WorkspaceId};
-use stp_core::registry::{ManagedTerminal, Registry, TerminalBackend, TerminalStatus};
+use stp_core::ids::TerminalId;
+use stp_core::registry::{Registry, TerminalStatus};
 use unicode_width::UnicodeWidthStr;
 
-use super::session_sidebar::{
-    WIDTH, command, mouse_binding, terminal_for_mouse_line, text,
-};
+use super::session_sidebar::{WIDTH, command, mouse_binding, terminal_for_mouse_line, text};
+use super::session_sidebar_test_support::terminal;
+
+#[test]
+fn sidebar_width_is_compact_for_panel_use() {
+    assert_eq!(WIDTH, 30);
+}
+
+#[test]
+fn sidebar_header_uses_compact_action_copy() {
+    let rendered = text(&Registry::default());
+
+    assert!(rendered.contains("click row open"));
+    assert!(rendered.contains("prefix+K kill"));
+    assert!(!rendered.contains("Click row to focus/open"));
+    assert!(!rendered.contains("terminate focused"));
+}
 
 #[test]
 fn sidebar_rows_include_all_live_sessions_in_registry_order() {
@@ -22,12 +34,12 @@ fn sidebar_rows_include_all_live_sessions_in_registry_order() {
             terminal(
                 "00000000-0000-0000-0000-000000000102",
                 "/tmp/worktree-b",
-                "feature/sidebar",
+                "sidebar",
             ),
             terminal(
                 "00000000-0000-0000-0000-000000000103",
                 "/tmp/worktree-c",
-                "feature/overflow",
+                "overflow",
             ),
         ],
     };
@@ -36,10 +48,10 @@ fn sidebar_rows_include_all_live_sessions_in_registry_order() {
 
     let row_a = rendered.find("1 00000000 worktree-a main").expect("row a");
     let row_b = rendered
-        .find("2 00000000 worktree-b feature/sidebar")
+        .find("2 00000000 worktree-b sidebar")
         .expect("row b");
     let row_c = rendered
-        .find("3 00000000 worktree-c feature/overflow")
+        .find("3 00000000 worktree-c overflow")
         .expect("row c");
     assert!(row_a < row_b);
     assert!(row_b < row_c);
@@ -85,7 +97,7 @@ fn command_renders_session_rows_when_live_sessions_exist() {
     let terminal_b = terminal(
         "00000000-0000-0000-0000-000000000102",
         "/tmp/worktree-b",
-        "feature/sidebar",
+        "sidebar",
     );
 
     let registry = Registry {
@@ -95,11 +107,11 @@ fn command_renders_session_rows_when_live_sessions_exist() {
 
     assert!(rendered.contains("STP sessions"));
     assert!(rendered.contains("2 live sessions"));
-    assert!(rendered.contains("Click row to focus/open"));
+    assert!(rendered.contains("click row open"));
     assert!(rendered.contains("q quit panel"));
-    assert!(rendered.contains("prefix K terminate focused"));
+    assert!(rendered.contains("prefix+K kill"));
     assert!(rendered.contains("1 00000000 worktree-a main"));
-    assert!(rendered.contains("2 00000000 worktree-b feature/sidebar"));
+    assert!(rendered.contains("2 00000000 worktree-b sidebar"));
     assert!(rendered.contains(concat!("exec $", "{SHELL:-sh}")));
 }
 
@@ -153,7 +165,9 @@ fn command_replaces_control_characters_in_visible_labels() {
     };
     let rendered = command(&registry);
 
-    assert!(rendered.contains("worktree?bad main?bad"));
+    assert!(rendered.contains("worktree?bad"));
+    assert!(!rendered.contains("worktree\nbad"));
+    assert!(!rendered.contains("main\tbad"));
 }
 
 #[test]
@@ -272,26 +286,4 @@ fn sidebar_mouse_line_uses_tmux_coordinates_after_header() {
         selected.terminal_id,
         TerminalId::parse("00000000-0000-0000-0000-000000000102").expect("id")
     );
-}
-
-fn terminal(id: &str, workspace: &str, branch: &str) -> ManagedTerminal {
-    ManagedTerminal {
-        terminal_id: TerminalId::parse(id).expect("terminal id"),
-        workspace_id: WorkspaceId::new("workspace".to_owned()),
-        window_id: WindowId::parse("00000000-0000-0000-0000-000000000001").expect("window id"),
-        workspace_path: PathBuf::from(workspace),
-        repo_root: PathBuf::from(workspace),
-        branch_name: Some(branch.to_owned()),
-        backend: TerminalBackend::legacy_tmux(
-            "stp-test-socket".to_owned(),
-            "stp-test-session".to_owned(),
-            "0".to_owned(),
-        ),
-        tmux_socket: "stp-test-socket".to_owned(),
-        tmux_session: "stp-test-session".to_owned(),
-        tmux_window: "0".to_owned(),
-        created_at: 0,
-        last_seen_at: 0,
-        status: TerminalStatus::Live,
-    }
 }

@@ -40,7 +40,7 @@ fn panel_ignores_live_registry_entries_when_tmux_session_is_missing() {
         .success();
 
     wait_for_pane_title(&socket, "empty:1");
-    wait_for_titled_pane_capture(&socket, "empty:1", "slot 1: <empty>");
+    wait_for_titled_pane_capture(&socket, "empty:1", "slot 1 waiting");
     assert!(registry_terminal_ids(&registry).is_empty());
     kill_tmux_server(&panel_socket);
     kill_tmux_server(&socket);

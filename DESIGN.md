@@ -143,6 +143,16 @@ All spacing derives from a base of 4px.
 - Accessibility: hidden from assistive tech when purely decorative; nearby text explains the workflow.
 - Motion: ambient transform on hover only.
 
+### Interactive TUI Panel
+
+- Structure: tmux session with one compact session sidebar and a 2x2 or 3x3 terminal grid.
+- Sidebar width: 30 terminal columns. Sidebar copy must fit within that width without relying on large blank space.
+- Pane frame: content panes show tmux pane border titles at the top so each slot reads as a panel, not a plain shell.
+- Empty state: empty slots use a concise waiting state with the slot number and direct action: open an STP terminal in Cursor, then click a row in the sidebar.
+- Focus state: active pane uses the tmux active border style; inactive panes keep a quiet border.
+- Accessibility: visible text instructions must name the available mouse and keyboard actions without requiring prior tmux knowledge.
+- Motion: none; this is a terminal surface.
+
 ## 6. Motion & Interaction
 
 ### Timing

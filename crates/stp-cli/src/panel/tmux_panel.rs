@@ -1,6 +1,6 @@
 use anyhow::{Context, bail};
-use stp_core::registry::RegistryStore;
-use stp_tmux::adapter::Tmux;
+use stp_core::registry::{ManagedTerminal, RegistryStore};
+use stp_tmux::adapter::{PaneInfo, Tmux, TmuxError, TmuxWindowSession};
 
 use super::Layout;
 #[cfg(test)]
@@ -10,10 +10,16 @@ use super::layout;
 #[cfg(test)]
 pub(super) use super::layout::{pane_commands, pane_titles};
 use super::session_sidebar;
+use super::terminal_size;
+use super::tmux_grid;
 use crate::session_cleanup::{load_without_zombie_sessions, terminal_session_is_known_missing};
 
 const PANEL_SESSION: &str = "stp-panel";
 const PANEL_WINDOW: &str = "panel";
+const ACTIVE_BORDER_STYLE: &str = "fg=colour154";
+const BORDER_STYLE: &str = "fg=colour244";
+const PANE_BORDER_FORMAT: &str = " #{?pane_active,*, }#{pane_title} ";
+const PANEL_CONNECT_LOCK: &str = "stp-panel-connect";
 
 pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow::Result<()> {
     let registry = load_without_zombie_sessions(store)?;
@@ -21,16 +27,8 @@ pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow
     let titles = layout::pane_titles(&registry, layout);
     let tmux = Tmux::new(panel_socket);
     tmux.kill_session_if_exists(PANEL_SESSION)?;
-    tmux.new_session_with_window(
-        PANEL_SESSION,
-        PANEL_WINDOW,
-        &session_sidebar::command(&registry),
-    )?;
-    tmux.set_option(PANEL_SESSION, "status", "off")?;
-    tmux.set_option(PANEL_SESSION, "mouse", "on")?;
-    tmux.set_window_option(PANEL_SESSION, "allow-rename", "off")?;
-    tmux.set_window_option(PANEL_SESSION, "allow-set-title", "off")?;
-    tmux.set_window_option(PANEL_SESSION, "automatic-rename", "off")?;
+    create_panel_session(&tmux, &session_sidebar::command(&registry))?;
+    configure_panel_options(&tmux)?;
     let sidebar_pane = tmux
         .list_pane_ids(PANEL_SESSION)?
         .first()
@@ -43,7 +41,8 @@ pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow
     let first_command = commands.first().context("panel layout has no panes")?;
     let first_content_pane = tmux.split_window_right_with_id(&sidebar_pane, first_command)?;
     tmux.resize_pane_width(&sidebar_pane, session_sidebar::WIDTH)?;
-    let content_pane_ids = split_content_grid(&tmux, &first_content_pane, &commands, layout)?;
+    let content_pane_ids =
+        tmux_grid::split_content_grid(&tmux, &first_content_pane, &commands, layout)?;
     tmux.resize_pane_width(&sidebar_pane, session_sidebar::WIDTH)?;
     if content_pane_ids.len() != titles.len() {
         bail!(
@@ -60,71 +59,14 @@ pub fn open(store: &RegistryStore, layout: Layout, panel_socket: &str) -> anyhow
     Ok(())
 }
 
-fn split_content_grid(
-    tmux: &Tmux,
-    first_content_pane: &str,
-    commands: &[String],
-    layout: Layout,
-) -> anyhow::Result<Vec<String>> {
-    match layout {
-        Layout::TwoByTwo => split_two_by_two(tmux, first_content_pane, commands),
-        Layout::ThreeByThree => split_three_by_three(tmux, first_content_pane, commands),
-    }
-}
-
-fn split_two_by_two(
-    tmux: &Tmux,
-    first_content_pane: &str,
-    commands: &[String],
-) -> anyhow::Result<Vec<String>> {
-    let top_left = first_content_pane.to_owned();
-    let top_right =
-        tmux.split_window_right_percent_with_id(&top_left, 50, command_at(commands, 1)?)?;
-    let bottom_left = tmux.split_window_percent_with_id(&top_left, 50, command_at(commands, 2)?)?;
-    let bottom_right =
-        tmux.split_window_percent_with_id(&top_right, 50, command_at(commands, 3)?)?;
-    Ok(vec![top_left, top_right, bottom_left, bottom_right])
-}
-
-fn split_three_by_three(
-    tmux: &Tmux,
-    first_content_pane: &str,
-    commands: &[String],
-) -> anyhow::Result<Vec<String>> {
-    let top_left = first_content_pane.to_owned();
-    let top_middle =
-        tmux.split_window_right_percent_with_id(&top_left, 67, command_at(commands, 1)?)?;
-    let top_right =
-        tmux.split_window_right_percent_with_id(&top_middle, 50, command_at(commands, 2)?)?;
-    let middle_left = tmux.split_window_percent_with_id(&top_left, 67, command_at(commands, 3)?)?;
-    let middle_middle =
-        tmux.split_window_percent_with_id(&top_middle, 67, command_at(commands, 4)?)?;
-    let middle_right =
-        tmux.split_window_percent_with_id(&top_right, 67, command_at(commands, 5)?)?;
-    let bottom_left =
-        tmux.split_window_percent_with_id(&middle_left, 50, command_at(commands, 6)?)?;
-    let bottom_middle =
-        tmux.split_window_percent_with_id(&middle_middle, 50, command_at(commands, 7)?)?;
-    let bottom_right =
-        tmux.split_window_percent_with_id(&middle_right, 50, command_at(commands, 8)?)?;
-    Ok(vec![
-        top_left,
-        top_middle,
-        top_right,
-        middle_left,
-        middle_middle,
-        middle_right,
-        bottom_left,
-        bottom_middle,
-        bottom_right,
-    ])
-}
-
-fn command_at(commands: &[String], index: usize) -> anyhow::Result<&str> {
-    commands
-        .get(index)
-        .map(String::as_str)
-        .with_context(|| format!("panel layout missing command for slot {}", index + 1))
+fn create_panel_session(tmux: &Tmux, sidebar_command: &str) -> anyhow::Result<()> {
+    tmux.new_window_session(TmuxWindowSession {
+        session_name: PANEL_SESSION,
+        window_name: PANEL_WINDOW,
+        shell_command: sidebar_command,
+        size: terminal_size::current(),
+    })?;
+    Ok(())
 }
 
 pub fn select_from_sidebar(
@@ -167,8 +109,118 @@ pub fn select_from_sidebar(
     Ok(())
 }
 
-fn set_pane_key(tmux: &Tmux, pane_id: &str, key: &str) -> anyhow::Result<()> {
-    tmux.set_pane_title(pane_id, key)?;
+pub fn connect_registered_terminal(
+    store: &RegistryStore,
+    terminal: &ManagedTerminal,
+    panel_socket: &str,
+) -> anyhow::Result<bool> {
+    let tmux = Tmux::new(panel_socket);
+    let _lock = match tmux.wait_for_lock(PANEL_CONNECT_LOCK) {
+        Ok(lock) => lock,
+        Err(error) if error.is_missing_session() => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let panes = match tmux.list_panes_with_titles(PANEL_SESSION) {
+        Ok(panes) => panes,
+        Err(error) if error.is_missing_session() => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let terminal_id = terminal.terminal_id.to_string();
+    if panes.iter().any(|pane| pane.pane_key == terminal_id) {
+        return Ok(true);
+    }
+    let Some(target) = first_empty_pane(&panes) else {
+        return Ok(false);
+    };
+    if let Err(error) = tmux.respawn_pane(
+        &target.pane_id,
+        &session_sidebar::terminal_command(terminal),
+    ) {
+        if error.is_missing_session() {
+            return Ok(false);
+        }
+        return Err(error.into());
+    }
+    if let Err(error) = set_pane_key(&tmux, &target.pane_id, &terminal_id) {
+        if error.is_missing_session() {
+            return Ok(false);
+        }
+        return Err(error.into());
+    }
+    if !refresh_sidebar(&tmux, store)? {
+        return Ok(false);
+    }
+    Ok(true)
+}
+
+pub(super) fn configure_panel_options(tmux: &Tmux) -> anyhow::Result<()> {
+    tmux.set_option(PANEL_SESSION, "status", "off")?;
+    tmux.set_option(PANEL_SESSION, "mouse", "on")?;
+    tmux.set_window_option(PANEL_SESSION, "allow-rename", "off")?;
+    tmux.set_window_option(PANEL_SESSION, "allow-set-title", "off")?;
+    tmux.set_window_option(PANEL_SESSION, "automatic-rename", "off")?;
+    tmux.set_window_option(PANEL_SESSION, "pane-border-status", "top")?;
+    tmux.set_window_option(PANEL_SESSION, "pane-border-format", PANE_BORDER_FORMAT)?;
+    tmux.set_window_option(PANEL_SESSION, "pane-border-style", BORDER_STYLE)?;
+    tmux.set_window_option(
+        PANEL_SESSION,
+        "pane-active-border-style",
+        ACTIVE_BORDER_STYLE,
+    )?;
+    Ok(())
+}
+
+fn refresh_sidebar(tmux: &Tmux, store: &RegistryStore) -> anyhow::Result<bool> {
+    let panes = match tmux.list_panes_with_titles(PANEL_SESSION) {
+        Ok(panes) => panes,
+        Err(error) if error.is_missing_session() => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    let Some(sidebar) = panes
+        .iter()
+        .find(|pane| pane.pane_key == session_sidebar::TITLE)
+    else {
+        return Ok(true);
+    };
+    let registry = store.load()?;
+    if let Err(error) = tmux.respawn_pane(&sidebar.pane_id, &session_sidebar::command(&registry)) {
+        if error.is_missing_session() {
+            return Ok(false);
+        }
+        return Err(error.into());
+    }
+    if let Err(error) = set_pane_key(tmux, &sidebar.pane_id, session_sidebar::TITLE) {
+        if error.is_missing_session() {
+            return Ok(false);
+        }
+        return Err(error.into());
+    }
+    Ok(true)
+}
+
+fn set_pane_key(tmux: &Tmux, pane_id: &str, key: &str) -> Result<(), TmuxError> {
+    let pane_title = pane_title_for_key(key);
+    tmux.set_pane_title(pane_id, &pane_title)?;
     tmux.set_pane_option(pane_id, "@stp-pane-key", key)?;
     Ok(())
+}
+
+fn first_empty_pane(panes: &[PaneInfo]) -> Option<&PaneInfo> {
+    panes
+        .iter()
+        .filter_map(|pane| empty_slot_number(&pane.pane_key).map(|slot| (slot, pane)))
+        .min_by_key(|(slot, _pane)| *slot)
+        .map(|(_slot, pane)| pane)
+}
+
+fn empty_slot_number(pane_key: &str) -> Option<usize> {
+    pane_key.strip_prefix("empty:")?.parse().ok()
+}
+
+fn pane_title_for_key(key: &str) -> String {
+    if let Some(slot) = key.strip_prefix("empty:") {
+        return format!("slot {slot} empty");
+    }
+    let short_id = key.chars().take(8).collect::<String>();
+    format!("STP {short_id}")
 }

@@ -54,10 +54,14 @@ fn terminal_command(terminal: &ManagedTerminal) -> String {
 fn empty_command(slot: usize) -> String {
     let message = format!(
         concat!(
-            "slot {}: <empty>\n\n",
-            "Open a new STP terminal in Cursor, then click it in the sidebar.\n"
+            "slot {} waiting\n\n",
+            "Open STP terminal in Cursor.\n",
+            "Click its sidebar row to load here.\n"
         ),
         slot.saturating_add(1)
     );
-    format!("printf %s {}; exec ${{SHELL:-sh}}", shell::quote(&message))
+    format!(
+        "printf %s {}; exec env PS1= PROMPT= RPROMPT= sh",
+        shell::quote(&message)
+    )
 }

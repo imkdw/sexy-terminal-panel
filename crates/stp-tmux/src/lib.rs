@@ -3,3 +3,4 @@ mod binding;
 mod error;
 mod pane;
 mod runner;
+mod session;

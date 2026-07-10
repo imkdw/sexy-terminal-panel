@@ -33,8 +33,12 @@ impl TmuxError {
             Self::CommandFailed { stdout, stderr, .. } => {
                 stdout.contains("can't find session")
                     || stderr.contains("can't find session")
+                    || stdout.contains("can't find window")
+                    || stderr.contains("can't find window")
                     || stdout.contains("no server running")
                     || stderr.contains("no server running")
+                    || stdout.contains("error connecting")
+                    || stderr.contains("error connecting")
             }
         }
     }
