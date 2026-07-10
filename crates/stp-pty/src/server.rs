@@ -112,6 +112,10 @@ fn spawn_client(stream: UnixStream, state: Arc<BrokerState>) -> Result<(), Broke
 }
 
 fn handle_client(stream: UnixStream, state: &BrokerState) -> Result<(), BrokerError> {
+    // macOS 는 accept 된 소켓이 리스너의 non-blocking 플래그를 상속한다. 그대로 두면
+    // 즉시 데이터를 보내지 않는 idle 연결(예: attach 후 대기하는 event 연결)의 read 가
+    // WouldBlock 으로 에러 처리되어 연결이 끊긴다. 명시적으로 blocking 으로 되돌린다.
+    stream.set_nonblocking(false)?;
     let reader_stream = stream.try_clone()?;
     let mut direct_stream = stream.try_clone()?;
     let (tx, rx) = mpsc::channel();
