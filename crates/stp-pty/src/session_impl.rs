@@ -7,13 +7,11 @@ use std::thread;
 
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use stp_core::ids::TerminalId;
-use stp_core::protocol::{ServerEvent, SessionSummary};
+use stp_core::protocol::ServerEvent;
 use stp_core::registry::TerminalStatus;
 
 use crate::error::BrokerError;
-use crate::session::{
-    BrokerSession, DEFAULT_COLS, DEFAULT_ROWS, SCROLLBACK_LINES, lock, status_label,
-};
+use crate::session::{BrokerSession, DEFAULT_COLS, DEFAULT_ROWS, SCROLLBACK_LINES, lock};
 
 impl BrokerSession {
     pub fn spawn(
@@ -116,13 +114,6 @@ impl BrokerSession {
 
     pub fn status(&self) -> Result<TerminalStatus, BrokerError> {
         lock(&self.status, "status").map(|status| *status)
-    }
-
-    pub fn summary(&self) -> Result<SessionSummary, BrokerError> {
-        Ok(SessionSummary {
-            terminal_id: self.terminal_id.clone(),
-            status: status_label(self.status()?),
-        })
     }
 
     fn process_output(&self, data: &[u8]) -> Result<(), BrokerError> {

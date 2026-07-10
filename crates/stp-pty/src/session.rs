@@ -209,9 +209,11 @@ impl BrokerState {
         for terminal_id in terminal_ids {
             self.update_registry_status(terminal_id, TerminalStatus::Exited)?;
         }
-        let mut sessions = lock(&self.sessions, "sessions")?;
-        for terminal_id in terminal_ids {
-            sessions.remove(terminal_id);
+        {
+            let mut sessions = lock(&self.sessions, "sessions")?;
+            for terminal_id in terminal_ids {
+                sessions.remove(terminal_id);
+            }
         }
         Ok(())
     }

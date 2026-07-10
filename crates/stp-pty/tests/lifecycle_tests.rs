@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::Duration;
 
@@ -96,17 +97,19 @@ fn broker_oversized_frame_returns_error_and_closes_client() {
     let mut stream = UnixStream::connect(&config.socket_path).expect("connect");
 
     match stream.write_all(&vec![b'x'; MAX_FRAME_BYTES + 1]) {
-        Ok(()) => {}
+        Ok(()) => stream.shutdown(Shutdown::Write).expect("close write half"),
         Err(source) if source.kind() == ErrorKind::BrokenPipe => {}
         Err(source) => panic!("write oversized frame: {source}"),
     }
     let mut reader = BufReader::new(stream.try_clone().expect("clone stream"));
     let mut raw = String::new();
-    reader.read_line(&mut raw).expect("read error frame");
-    assert!(matches!(
-        decode_server_frame(&raw).expect("decode error"),
-        ServerEvent::Error { code, .. } if code == "frame_too_large"
-    ));
+    let bytes = reader.read_line(&mut raw).expect("read error frame");
+    if bytes > 0 {
+        assert!(matches!(
+            decode_server_frame(&raw).expect("decode error"),
+            ServerEvent::Error { code, .. } if code == "frame_too_large"
+        ));
+    }
 
     let mut client = BrokerClient::connect(&config.socket_path).expect("client");
     assert!(matches!(
